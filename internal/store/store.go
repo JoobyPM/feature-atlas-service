@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
-	"errors"
 	"sort"
 	"strconv"
 	"strings"
@@ -126,6 +125,46 @@ func (s *Store) GetFeature(id string) (Feature, bool) {
 	return f, ok
 }
 
+// MaxFeatureID is the maximum feature ID number (FT-999999).
+const MaxFeatureID = 999999
+
+// CreateFeature adds a new feature with a server-assigned ID.
+// Returns the created feature with the assigned ID.
+// Returns zero-value Feature if ID space is exhausted (should never happen in practice).
+func (s *Store) CreateFeature(name, summary, owner string, tags []string) Feature {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Find next available ID with bounded search
+	nextNum := len(s.features) + 1
+	if nextNum > MaxFeatureID {
+		nextNum = 1 // Normalize before loop starts
+	}
+	for range MaxFeatureID {
+		id := "FT-" + leftPadInt(nextNum, 6)
+		if _, exists := s.features[id]; !exists {
+			f := Feature{
+				ID:        id,
+				Name:      name,
+				Summary:   summary,
+				Owner:     owner,
+				Tags:      tags,
+				CreatedAt: time.Now(),
+			}
+			s.features[id] = f
+			s.featureIDs = append(s.featureIDs, id)
+			return f
+		}
+		nextNum++
+		if nextNum > MaxFeatureID {
+			nextNum = 1 // Wrap around to find gaps
+		}
+	}
+
+	// Should never happen in practice - return zero-value
+	return Feature{}
+}
+
 // SearchFeatures performs a case-insensitive search across feature fields.
 func (s *Store) SearchFeatures(query string, limit int) []Feature {
 	if limit <= 0 {
@@ -184,6 +223,3 @@ func toTitle(s string) string {
 	}
 	return strings.Join(words, " ")
 }
-
-// ErrNotFound is returned when a requested item does not exist.
-var ErrNotFound = errors.New("not found")

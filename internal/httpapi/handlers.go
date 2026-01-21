@@ -27,6 +27,7 @@ func (s *Server) Routes() http.Handler {
 
 	// Admin API (auth + admin middleware will wrap)
 	mux.HandleFunc("/admin/v1/clients", s.handleClients)
+	mux.HandleFunc("/admin/v1/features", s.handleAdminFeatures)
 	mux.HandleFunc("/admin/v1/features/seed", s.handleSeed)
 
 	return mux
@@ -145,6 +146,71 @@ func (s *Server) handleSuggest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": out, "count": len(out)})
 }
 
+// handleAdminFeatures handles feature creation via admin API.
+func (s *Server) handleAdminFeatures(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := readAllLimit(r.Body, 1<<20)
+	if err != nil {
+		http.Error(w, "bad body", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Name    string   `json:"name"`
+		Summary string   `json:"summary"`
+		Owner   string   `json:"owner"`
+		Tags    []string `json:"tags"`
+	}
+	if unmarshalErr := json.Unmarshal(body, &req); unmarshalErr != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+
+	req.Name = strings.TrimSpace(req.Name)
+	req.Summary = strings.TrimSpace(req.Summary)
+	req.Owner = strings.TrimSpace(req.Owner)
+
+	if req.Name == "" || req.Summary == "" {
+		http.Error(w, "name and summary required", http.StatusBadRequest)
+		return
+	}
+
+	// Field length limits
+	const maxNameLen, maxSummaryLen, maxOwnerLen = 200, 1000, 100
+	if len(req.Name) > maxNameLen {
+		http.Error(w, "name too long (max 200)", http.StatusBadRequest)
+		return
+	}
+	if len(req.Summary) > maxSummaryLen {
+		http.Error(w, "summary too long (max 1000)", http.StatusBadRequest)
+		return
+	}
+	if len(req.Owner) > maxOwnerLen {
+		http.Error(w, "owner too long (max 100)", http.StatusBadRequest)
+		return
+	}
+
+	// Sanitize tags
+	var tags []string
+	for _, t := range req.Tags {
+		t = strings.TrimSpace(t)
+		if t != "" {
+			tags = append(tags, t)
+		}
+	}
+
+	feature := s.Store.CreateFeature(req.Name, req.Summary, req.Owner, tags)
+	if feature.ID == "" {
+		http.Error(w, "feature ID space exhausted", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusCreated, feature)
+}
+
 // handleSeed handles requests to reseed the feature catalog.
 func (s *Server) handleSeed(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -187,7 +253,7 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 
 		cert, err := parseCertPEM(req.CertPEM)
 		if err != nil {
-			http.Error(w, "invalid cert_pem: "+err.Error(), http.StatusBadRequest)
+			http.Error(w, "invalid cert_pem", http.StatusBadRequest)
 			return
 		}
 

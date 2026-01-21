@@ -2,6 +2,7 @@
 package apiclient
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -88,7 +89,7 @@ func New(baseURL, caFile, certFile, keyFile string) (*Client, error) {
 func (c *Client) Me(ctx context.Context) (*ClientInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/api/v1/me", nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
 	resp, err := c.HTTP.Do(req)
@@ -113,7 +114,7 @@ func (c *Client) Me(ctx context.Context) (*ClientInfo, error) {
 func (c *Client) Suggest(ctx context.Context, query string, limit int) ([]SuggestItem, error) {
 	u, err := url.Parse(c.BaseURL + "/api/v1/suggest")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse URL: %w", err)
 	}
 
 	q := u.Query()
@@ -123,7 +124,7 @@ func (c *Client) Suggest(ctx context.Context, query string, limit int) ([]Sugges
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
 	resp, err := c.HTTP.Do(req)
@@ -151,7 +152,7 @@ func (c *Client) Suggest(ctx context.Context, query string, limit int) ([]Sugges
 func (c *Client) Search(ctx context.Context, query string, limit int) ([]Feature, error) {
 	u, err := url.Parse(c.BaseURL + "/api/v1/features")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse URL: %w", err)
 	}
 
 	q := u.Query()
@@ -161,7 +162,7 @@ func (c *Client) Search(ctx context.Context, query string, limit int) ([]Feature
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
 	resp, err := c.HTTP.Do(req)
@@ -190,7 +191,7 @@ func (c *Client) Search(ctx context.Context, query string, limit int) ([]Feature
 func (c *Client) GetFeature(ctx context.Context, id string) (*Feature, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/api/v1/features/"+id, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
 	resp, err := c.HTTP.Do(req)
@@ -224,4 +225,49 @@ func (c *Client) FeatureExists(ctx context.Context, id string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// CreateFeatureRequest is the request body for creating a feature.
+type CreateFeatureRequest struct {
+	Name    string   `json:"name"`
+	Summary string   `json:"summary"`
+	Owner   string   `json:"owner,omitempty"`
+	Tags    []string `json:"tags,omitempty"`
+}
+
+// CreateFeature creates a new feature on the server (admin only).
+// Returns the created feature with the server-assigned ID.
+func (c *Client) CreateFeature(ctx context.Context, req CreateFeatureRequest) (*Feature, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/admin/v1/features", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.ContentLength = int64(len(body))
+
+	resp, err := c.HTTP.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusCreated:
+		var f Feature
+		if decodeErr := json.NewDecoder(resp.Body).Decode(&f); decodeErr != nil {
+			return nil, decodeErr
+		}
+		return &f, nil
+	case http.StatusForbidden:
+		return nil, errors.New("admin role required")
+	case http.StatusBadRequest:
+		return nil, errors.New("invalid request: name and summary required")
+	default:
+		return nil, fmt.Errorf("create feature failed: %s", resp.Status)
+	}
 }

@@ -179,7 +179,7 @@ linters:
         - "(*database/sql.Rows).Close"
         - "(*database/sql.Stmt).Close"
         - "(*database/sql.Tx).Rollback"
-        - "(*net/http.Response).Body.Close"
+        # Note: http.Response.Body is io.ReadCloser, already covered by (io.Closer).Close
         - "(*archive/zip.ReadCloser).Close"
         # Writers where partial writes are acceptable or caller handles
         - "(net/http.ResponseWriter).Write"

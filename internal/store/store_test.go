@@ -327,3 +327,236 @@ func TestFingerprintDeterministic(t *testing.T) {
 		t.Error("fingerprint should be deterministic")
 	}
 }
+
+func TestCreateFeature(t *testing.T) {
+	s := New()
+
+	// Create first feature
+	f1 := s.CreateFeature("Auth", "User login flow", "Security Team", []string{"auth", "security"})
+	if f1.ID != "FT-000001" {
+		t.Errorf("first feature ID = %q, want %q", f1.ID, "FT-000001")
+	}
+	if f1.Name != "Auth" {
+		t.Errorf("name = %q, want %q", f1.Name, "Auth")
+	}
+	if f1.Summary != "User login flow" {
+		t.Errorf("summary = %q, want %q", f1.Summary, "User login flow")
+	}
+	if f1.Owner != "Security Team" {
+		t.Errorf("owner = %q, want %q", f1.Owner, "Security Team")
+	}
+	if len(f1.Tags) != 2 || f1.Tags[0] != "auth" || f1.Tags[1] != "security" {
+		t.Errorf("tags = %v, want [auth, security]", f1.Tags)
+	}
+	if f1.CreatedAt.IsZero() {
+		t.Error("CreatedAt should be set")
+	}
+
+	// Create second feature - should auto-increment
+	f2 := s.CreateFeature("Billing", "Payment processing", "", nil)
+	if f2.ID != "FT-000002" {
+		t.Errorf("second feature ID = %q, want %q", f2.ID, "FT-000002")
+	}
+
+	// Verify features are retrievable
+	got1, ok := s.GetFeature("FT-000001")
+	if !ok {
+		t.Fatal("first feature should be retrievable")
+	}
+	if got1.Name != "Auth" {
+		t.Errorf("retrieved name = %q, want %q", got1.Name, "Auth")
+	}
+
+	got2, ok := s.GetFeature("FT-000002")
+	if !ok {
+		t.Fatal("second feature should be retrievable")
+	}
+	if got2.Name != "Billing" {
+		t.Errorf("retrieved name = %q, want %q", got2.Name, "Billing")
+	}
+}
+
+func TestCreateFeature_WithExistingFeatures(t *testing.T) {
+	s := New()
+	s.SeedFeatures(5) // Seeds FT-000001 through FT-000005
+
+	// New feature should get FT-000006
+	f := s.CreateFeature("New Feature", "Test", "", nil)
+	if f.ID != "FT-000006" {
+		t.Errorf("feature ID = %q, want %q", f.ID, "FT-000006")
+	}
+
+	// Verify we now have 6 features
+	features := s.SearchFeatures("", 100)
+	if len(features) != 6 {
+		t.Errorf("total features = %d, want 6", len(features))
+	}
+}
+
+func TestCreateFeature_Concurrent(t *testing.T) {
+	s := New()
+	done := make(chan string, 10)
+
+	// Create features concurrently
+	for i := range 10 {
+		go func(idx int) {
+			name := "Feature " + string(rune('A'+idx))
+			f := s.CreateFeature(name, "Summary", "", nil)
+			done <- f.ID
+		}(i)
+	}
+
+	// Collect all IDs
+	ids := make(map[string]bool)
+	for range 10 {
+		id := <-done
+		if ids[id] {
+			t.Errorf("duplicate ID created: %s", id)
+		}
+		ids[id] = true
+	}
+
+	// Should have 10 unique IDs
+	if len(ids) != 10 {
+		t.Errorf("created %d unique IDs, want 10", len(ids))
+	}
+}
+
+// =============================================================================
+// Benchmarks
+// =============================================================================
+
+func BenchmarkSearchFeatures(b *testing.B) {
+	s := New()
+	s.SeedFeatures(200)
+
+	b.ResetTimer()
+	for range b.N {
+		_ = s.SearchFeatures("enable", 20)
+	}
+}
+
+func BenchmarkSearchFeatures_EmptyQuery(b *testing.B) {
+	s := New()
+	s.SeedFeatures(200)
+
+	b.ResetTimer()
+	for range b.N {
+		_ = s.SearchFeatures("", 20)
+	}
+}
+
+func BenchmarkSearchFeatures_NoMatch(b *testing.B) {
+	s := New()
+	s.SeedFeatures(200)
+
+	b.ResetTimer()
+	for range b.N {
+		_ = s.SearchFeatures("xyznonexistent", 20)
+	}
+}
+
+func BenchmarkGetFeature(b *testing.B) {
+	s := New()
+	s.SeedFeatures(200)
+
+	b.ResetTimer()
+	for range b.N {
+		_, _ = s.GetFeature("FT-000100")
+	}
+}
+
+func BenchmarkCreateFeature(b *testing.B) {
+	s := New()
+
+	b.ResetTimer()
+	for range b.N {
+		s.CreateFeature("Test", "Summary", "Owner", []string{"tag"})
+	}
+}
+
+func BenchmarkUpsertClient(b *testing.B) {
+	s := New()
+	client := Client{
+		Fingerprint: "benchmark-fp",
+		Name:        "benchmark-client",
+		Role:        RoleUser,
+		CreatedAt:   time.Now(),
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		s.UpsertClient(client)
+	}
+}
+
+func BenchmarkGetClient(b *testing.B) {
+	s := New()
+	s.UpsertClient(Client{
+		Fingerprint: "benchmark-fp",
+		Name:        "benchmark-client",
+		Role:        RoleUser,
+		CreatedAt:   time.Now(),
+	})
+
+	b.ResetTimer()
+	for range b.N {
+		_, _ = s.GetClient("benchmark-fp")
+	}
+}
+
+func BenchmarkListClients(b *testing.B) {
+	s := New()
+	for i := range 100 {
+		s.UpsertClient(Client{
+			Fingerprint: "fp-" + leftPadInt(i, 3),
+			Name:        "client-" + leftPadInt(i, 3),
+			Role:        RoleUser,
+			CreatedAt:   time.Now(),
+		})
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		_ = s.ListClients()
+	}
+}
+
+func BenchmarkMatchFeature(b *testing.B) {
+	f := Feature{
+		ID:      "FT-000123",
+		Name:    "Enable Dark Mode Toggle",
+		Summary: "Allow users to switch between light and dark themes",
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		_ = matchFeature(f, "dark")
+	}
+}
+
+func BenchmarkFingerprintSHA256(b *testing.B) {
+	cert := &x509.Certificate{
+		Raw: []byte("benchmark certificate data for fingerprinting"),
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		_ = FingerprintSHA256(cert)
+	}
+}
+
+func BenchmarkLeftPadInt(b *testing.B) {
+	for range b.N {
+		_ = leftPadInt(12345, 6)
+	}
+}
+
+func BenchmarkSeedFeatures(b *testing.B) {
+	s := New()
+
+	b.ResetTimer()
+	for range b.N {
+		s.SeedFeatures(200)
+	}
+}

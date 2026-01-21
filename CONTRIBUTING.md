@@ -15,7 +15,7 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 ### Prerequisites
 
-- Go 1.22+ (1.25.5 recommended)
+- Go 1.22+ (1.25.6 recommended)
 - [golangci-lint](https://golangci-lint.run/welcome/install/) v2.8.0+
 - Docker and Docker Compose (for containerized development)
 - OpenSSL (for certificate generation)
@@ -137,7 +137,7 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/).
 
 ### Format
 
-```
+```text
 <type>(<scope>): <description>
 
 [optional body]

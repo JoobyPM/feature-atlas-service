@@ -142,7 +142,7 @@ func fingerprintFromCertFile(path string) (string, error) {
 	//nolint:gosec // path is from trusted command-line flag
 	pemBytes, err := os.ReadFile(path)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("read cert file: %w", err)
 	}
 	block, _ := pem.Decode(pemBytes)
 	if block == nil || block.Type != "CERTIFICATE" {
