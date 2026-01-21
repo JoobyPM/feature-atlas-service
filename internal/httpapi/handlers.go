@@ -145,7 +145,7 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 			Role    string `json:"role"`
 			CertPEM string `json:"cert_pem"`
 		}
-		if err := json.Unmarshal(body, &req); err != nil {
+		if unmarshalErr := json.Unmarshal(body, &req); unmarshalErr != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)
 			return
 		}
@@ -192,7 +192,8 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	//nolint:errchkjson // response writer errors handled by server
+	json.NewEncoder(w).Encode(v)
 }
 
 // atoiDefault parses a string as an integer, returning def on error.

@@ -87,6 +87,7 @@ func main() {
 
 // fingerprintFromCertFile reads a PEM certificate file and returns its SHA-256 fingerprint.
 func fingerprintFromCertFile(path string) (string, error) {
+	//nolint:gosec // path is from trusted command-line flag
 	pemBytes, err := os.ReadFile(path)
 	if err != nil {
 		return "", err

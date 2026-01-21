@@ -68,7 +68,11 @@ func ClientFromContext(ctx context.Context) store.Client {
 	if v == nil {
 		return store.Client{}
 	}
-	return v.(store.Client)
+	c, ok := v.(store.Client)
+	if !ok {
+		return store.Client{}
+	}
+	return c
 }
 
 // CertFromContext extracts the client certificate from the request context.
@@ -77,12 +81,16 @@ func CertFromContext(ctx context.Context) *x509.Certificate {
 	if v == nil {
 		return nil
 	}
-	return v.(*x509.Certificate)
+	cert, ok := v.(*x509.Certificate)
+	if !ok {
+		return nil
+	}
+	return cert
 }
 
-// readAllLimit reads up to max bytes from r.
-func readAllLimit(r io.Reader, max int64) ([]byte, error) {
-	lr := io.LimitReader(r, max)
+// readAllLimit reads up to limit bytes from r.
+func readAllLimit(r io.Reader, limit int64) ([]byte, error) {
+	lr := io.LimitReader(r, limit)
 	return io.ReadAll(lr)
 }
 
