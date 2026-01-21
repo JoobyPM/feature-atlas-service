@@ -135,4 +135,4 @@ echo ""
 echo "==> Done! Certificates generated in: $CERT_DIR"
 echo ""
 echo "Files created:"
-ls -la "$CERT_DIR"/*.crt "$CERT_DIR"/*.key 2>/dev/null | awk '{print "    " $NF}'
+ls -la ./*.crt ./*.key 2>/dev/null | awk '{print "    " $NF}' || true
