@@ -314,7 +314,14 @@ func checkFeatureExists(fid string) (bool, error) {
 				return true, nil
 			}
 			manifestLoaded = true
+		} else if !errors.Is(loadErr, manifest.ErrInvalidYAML) {
+			// Real I/O error (permissions, etc.) - surface it
+			return false, fmt.Errorf("load manifest: %w", loadErr)
 		}
+		// ErrInvalidYAML: manifest is corrupted, fall through to server check
+	} else if !errors.Is(discoverErr, manifest.ErrManifestNotFound) {
+		// Real discovery error (not just "not found") - surface it
+		return false, fmt.Errorf("discover manifest: %w", discoverErr)
 	}
 
 	// If --offline, don't check server
