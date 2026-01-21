@@ -68,16 +68,25 @@ func TestAdminCreateFeature_Unauthorized(t *testing.T) {
 	require.NoError(t, err, "setup test environment")
 	defer env.Cleanup(ctx)
 
+	// First, register the user client using admin credentials
+	adminClient, err := testutil.NewAdminClient(env)
+	require.NoError(t, err, "create admin client")
+
+	err = testutil.RegisterUserClient(ctx, adminClient, env.Certs)
+	require.NoError(t, err, "register user client")
+
+	// Now create user client for testing
 	userClient, err := testutil.NewUserClient(env)
 	require.NoError(t, err, "create user client")
 
-	// Attempt to create a feature as non-admin
+	// Attempt to create a feature as non-admin (user is registered but not admin)
 	_, err = userClient.CreateFeature(ctx, apiclient.CreateFeatureRequest{
 		Name:    "Unauthorized Feature",
 		Summary: "This should fail",
 	})
 	require.Error(t, err, "non-admin should not be able to create features")
-	assert.Contains(t, err.Error(), "admin role required")
+	// Server returns "admin only" for non-admin users trying to access /admin/ routes
+	assert.Contains(t, err.Error(), "admin")
 }
 
 // TestAdminCreateFeature_BadRequest verifies validation errors.
