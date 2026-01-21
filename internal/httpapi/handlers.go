@@ -189,6 +189,10 @@ func (s *Server) handleAdminFeatures(w http.ResponseWriter, r *http.Request) {
 	}
 
 	feature := s.Store.CreateFeature(req.Name, req.Summary, req.Owner, tags)
+	if feature.ID == "" {
+		http.Error(w, "feature ID space exhausted", http.StatusInternalServerError)
+		return
+	}
 	writeJSON(w, http.StatusCreated, feature)
 }
 

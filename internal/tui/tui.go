@@ -58,7 +58,11 @@ func (i suggestionItem) FilterValue() string { return i.id + " " + i.name }
 
 // truncate shortens a string to maxLen runes with ellipsis.
 // Uses rune count for proper UTF-8 handling.
+// If maxLen < 4, returns the string unchanged (no room for ellipsis).
 func truncate(s string, maxLen int) string {
+	if maxLen < 4 {
+		return s
+	}
 	if utf8.RuneCountInString(s) <= maxLen {
 		return s
 	}

@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -244,7 +243,7 @@ func (c *Client) CreateFeature(ctx context.Context, req CreateFeatureRequest) (*
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/admin/v1/features", io.NopCloser(bytes.NewReader(body)))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/admin/v1/features", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
