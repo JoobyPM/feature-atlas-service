@@ -293,10 +293,10 @@ features:
 - [x] `featctl feature create` command (local only, no `--sync`)
 - [x] Unit tests for manifest package
 
-### Phase 2: Server Integration
-- [ ] `POST /admin/v1/features` endpoint
-- [ ] `featctl manifest add` command
-- [ ] `featctl manifest sync` command
+### Phase 2: Server Integration ✅
+- [x] `POST /admin/v1/features` endpoint
+- [x] `featctl manifest add` command
+- [x] `featctl manifest sync` command
 - [ ] Integration tests for sync workflow
 
 ### Phase 3: Lint Integration
