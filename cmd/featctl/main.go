@@ -66,14 +66,32 @@ var (
 
 // Exit codes per PRD specification.
 const (
-	exitSuccess         = 0
 	exitValidationError = 1
 	exitIDExists        = 2
 	exitWriteError      = 3
 )
 
+// ExitError is an error that carries a specific exit code.
+type ExitError struct {
+	Code    int
+	Message string
+}
+
+func (e *ExitError) Error() string {
+	return e.Message
+}
+
+// exitErr creates an ExitError with the given code and message.
+func exitErr(code int, msg string) error {
+	return &ExitError{Code: code, Message: msg}
+}
+
 func main() {
 	if err := rootCmd.Execute(); err != nil {
+		var exitError *ExitError
+		if errors.As(err, &exitError) {
+			os.Exit(exitError.Code)
+		}
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -271,7 +289,7 @@ Use --offline to only check the local manifest (no server connection).`,
 			for _, e := range errs {
 				fmt.Fprintf(os.Stderr, "  ✗ %s\n", e)
 			}
-			os.Exit(1)
+			return exitErr(exitValidationError, "validation failed")
 		}
 
 		fmt.Printf("✓ %s is valid\n", args[0])
@@ -281,14 +299,14 @@ Use --offline to only check the local manifest (no server connection).`,
 
 // checkFeatureExists checks if a feature exists in manifest or server.
 // Resolution order: manifest first, then server (unless --offline).
-func checkFeatureExists(featureID string) (bool, error) {
+func checkFeatureExists(fid string) (bool, error) {
 	// Try manifest first
 	manifestFound := false
 	mPath, discoverErr := manifest.Discover(lintManifest)
 	if discoverErr == nil {
 		m, loadErr := manifest.Load(mPath)
 		if loadErr == nil {
-			if m.HasFeature(featureID) {
+			if m.HasFeature(fid) {
 				return true, nil
 			}
 			manifestFound = true
@@ -298,8 +316,7 @@ func checkFeatureExists(featureID string) (bool, error) {
 	// If --offline, don't check server
 	if lintOffline {
 		if !manifestFound && errors.Is(discoverErr, manifest.ErrManifestNotFound) {
-			fmt.Fprintln(os.Stderr, "Error: manifest not found (required for --offline)")
-			os.Exit(exitIDExists) // Exit 2 for manifest parse error per PRD
+			return false, exitErr(exitIDExists, "manifest not found (required for --offline)")
 		}
 		return false, nil
 	}
@@ -312,7 +329,7 @@ func checkFeatureExists(featureID string) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	exists, serverErr := client.FeatureExists(ctx, featureID)
+	exists, serverErr := client.FeatureExists(ctx, fid)
 	if serverErr != nil {
 		return false, fmt.Errorf("check feature: %w", serverErr)
 	}
@@ -343,7 +360,7 @@ The manifest stores local feature definitions for offline validation.`,
 			if !manifestForce {
 				fmt.Fprintf(os.Stderr, "Error: manifest already exists: %s\n", path)
 				fmt.Fprintln(os.Stderr, "Use --force to overwrite")
-				os.Exit(exitValidationError)
+				return exitErr(exitValidationError, "manifest already exists")
 			}
 		}
 
@@ -351,7 +368,7 @@ The manifest stores local feature definitions for offline validation.`,
 		m := manifest.New()
 		if err := m.Save(path); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: failed to write manifest: %v\n", err)
-			os.Exit(exitWriteError)
+			return exitErr(exitWriteError, "failed to write manifest")
 		}
 
 		fmt.Printf("✓ Created %s\n", path)
@@ -368,7 +385,7 @@ var manifestListCmd = &cobra.Command{
 			if errors.Is(err, manifest.ErrManifestNotFound) {
 				fmt.Fprintln(os.Stderr, "Error: manifest not found")
 				fmt.Fprintln(os.Stderr, "Run 'featctl manifest init' to create one")
-				os.Exit(exitValidationError)
+				return exitErr(exitValidationError, "manifest not found")
 			}
 			return err
 		}
@@ -377,7 +394,7 @@ var manifestListCmd = &cobra.Command{
 		if err != nil {
 			if errors.Is(err, manifest.ErrInvalidYAML) {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(exitIDExists) // Exit 2 for parse error per PRD
+				return exitErr(exitIDExists, "invalid YAML")
 			}
 			return err
 		}
@@ -450,7 +467,7 @@ Requires mTLS connection to the server.`,
 			if errors.Is(err, manifest.ErrManifestNotFound) {
 				fmt.Fprintln(os.Stderr, "Error: manifest not found")
 				fmt.Fprintln(os.Stderr, "Run 'featctl manifest init' first")
-				os.Exit(exitValidationError)
+				return exitErr(exitValidationError, "manifest not found")
 			}
 			return err
 		}
@@ -459,7 +476,7 @@ Requires mTLS connection to the server.`,
 		m, err := manifest.Load(path)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(exitWriteError)
+			return exitErr(exitWriteError, "failed to load manifest")
 		}
 
 		// Check if already in manifest
@@ -476,10 +493,10 @@ Requires mTLS connection to the server.`,
 		if err != nil {
 			if errors.Is(err, apiclient.ErrFeatureNotFound) {
 				fmt.Fprintf(os.Stderr, "Error: feature not found on server: %s\n", targetID)
-				os.Exit(exitValidationError)
+				return exitErr(exitValidationError, "feature not found")
 			}
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(exitIDExists) // Exit 2 for network error
+			return exitErr(exitIDExists, "server error")
 		}
 
 		// Add to manifest with synced status
@@ -495,7 +512,7 @@ Requires mTLS connection to the server.`,
 		// Save
 		if err := m.SaveWithLock(path); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: failed to save manifest: %v\n", err)
-			os.Exit(exitWriteError)
+			return exitErr(exitWriteError, "failed to save manifest")
 		}
 
 		fmt.Printf("✓ Added %s (%s) to %s\n", feature.ID, feature.Name, path)
@@ -520,7 +537,7 @@ Requires admin mTLS certificate.`,
 			if errors.Is(err, manifest.ErrManifestNotFound) {
 				fmt.Fprintln(os.Stderr, "Error: manifest not found")
 				fmt.Fprintln(os.Stderr, "Run 'featctl manifest init' first")
-				os.Exit(exitValidationError)
+				return exitErr(exitValidationError, "manifest not found")
 			}
 			return err
 		}
@@ -529,7 +546,7 @@ Requires admin mTLS certificate.`,
 		m, err := manifest.Load(path)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(exitWriteError)
+			return exitErr(exitWriteError, "failed to load manifest")
 		}
 
 		// Find unsynced features
@@ -562,7 +579,7 @@ Requires admin mTLS certificate.`,
 			entry := unsynced[localID]
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			feature, err := client.CreateFeature(ctx, apiclient.CreateFeatureRequest{
+			feature, createErr := client.CreateFeature(ctx, apiclient.CreateFeatureRequest{
 				Name:    entry.Name,
 				Summary: entry.Summary,
 				Owner:   entry.Owner,
@@ -570,8 +587,8 @@ Requires admin mTLS certificate.`,
 			})
 			cancel()
 
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "  ✗ %s: %v\n", localID, err)
+			if createErr != nil {
+				fmt.Fprintf(os.Stderr, "  ✗ %s: %v\n", localID, createErr)
 				failed++
 				continue
 			}
@@ -595,13 +612,13 @@ Requires admin mTLS certificate.`,
 		// Save manifest
 		if err := m.SaveWithLock(path); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: failed to save manifest: %v\n", err)
-			os.Exit(exitWriteError)
+			return exitErr(exitWriteError, "failed to save manifest")
 		}
 
 		fmt.Printf("\nSynced: %d, Failed: %d\n", synced, failed)
 
 		if failed > 0 {
-			os.Exit(exitValidationError) // Partial failure
+			return exitErr(exitValidationError, "partial sync failure")
 		}
 		return nil
 	},
@@ -627,15 +644,15 @@ Examples:
 		// Validate required flags
 		if featureID == "" {
 			fmt.Fprintln(os.Stderr, "Error: --id is required")
-			os.Exit(exitValidationError)
+			return exitErr(exitValidationError, "--id is required")
 		}
 		if featureName == "" {
 			fmt.Fprintln(os.Stderr, "Error: --name is required")
-			os.Exit(exitValidationError)
+			return exitErr(exitValidationError, "--name is required")
 		}
 		if featureSummary == "" {
 			fmt.Fprintln(os.Stderr, "Error: --summary is required")
-			os.Exit(exitValidationError)
+			return exitErr(exitValidationError, "--summary is required")
 		}
 
 		// Validate ID format
@@ -643,7 +660,7 @@ Examples:
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			fmt.Fprintln(os.Stderr, "ID must match: FT-LOCAL-[a-z0-9-]{1,64}")
 			fmt.Fprintln(os.Stderr, "Example: FT-LOCAL-auth-flow")
-			os.Exit(exitValidationError)
+			return exitErr(exitValidationError, "invalid ID format")
 		}
 
 		// Find or create manifest
@@ -652,7 +669,7 @@ Examples:
 			if errors.Is(err, manifest.ErrManifestNotFound) {
 				fmt.Fprintln(os.Stderr, "Error: manifest not found")
 				fmt.Fprintln(os.Stderr, "Run 'featctl manifest init' first")
-				os.Exit(exitValidationError)
+				return exitErr(exitValidationError, "manifest not found")
 			}
 			return err
 		}
@@ -661,7 +678,7 @@ Examples:
 		m, err := manifest.Load(path)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(exitWriteError)
+			return exitErr(exitWriteError, "failed to load manifest")
 		}
 
 		// Parse tags
@@ -679,20 +696,20 @@ Examples:
 		if err := m.AddFeature(featureID, featureName, featureSummary, featureOwner, tags); err != nil {
 			if errors.Is(err, manifest.ErrIDExists) {
 				fmt.Fprintf(os.Stderr, "Error: feature ID already exists: %s\n", featureID)
-				os.Exit(exitIDExists)
+				return exitErr(exitIDExists, "feature ID already exists")
 			}
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(exitValidationError)
+			return exitErr(exitValidationError, "failed to add feature")
 		}
 
 		// Save with lock
 		if err := m.SaveWithLock(path); err != nil {
 			if errors.Is(err, manifest.ErrLockTimeout) {
 				fmt.Fprintln(os.Stderr, "Error: manifest locked by another process")
-				os.Exit(exitWriteError)
+				return exitErr(exitWriteError, "manifest locked")
 			}
 			fmt.Fprintf(os.Stderr, "Error: failed to save manifest: %v\n", err)
-			os.Exit(exitWriteError)
+			return exitErr(exitWriteError, "failed to save manifest")
 		}
 
 		fmt.Printf("✓ Created feature %s in %s\n", featureID, path)

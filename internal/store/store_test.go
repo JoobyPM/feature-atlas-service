@@ -327,3 +327,97 @@ func TestFingerprintDeterministic(t *testing.T) {
 		t.Error("fingerprint should be deterministic")
 	}
 }
+
+func TestCreateFeature(t *testing.T) {
+	s := New()
+
+	// Create first feature
+	f1 := s.CreateFeature("Auth", "User login flow", "Security Team", []string{"auth", "security"})
+	if f1.ID != "FT-000001" {
+		t.Errorf("first feature ID = %q, want %q", f1.ID, "FT-000001")
+	}
+	if f1.Name != "Auth" {
+		t.Errorf("name = %q, want %q", f1.Name, "Auth")
+	}
+	if f1.Summary != "User login flow" {
+		t.Errorf("summary = %q, want %q", f1.Summary, "User login flow")
+	}
+	if f1.Owner != "Security Team" {
+		t.Errorf("owner = %q, want %q", f1.Owner, "Security Team")
+	}
+	if len(f1.Tags) != 2 || f1.Tags[0] != "auth" || f1.Tags[1] != "security" {
+		t.Errorf("tags = %v, want [auth, security]", f1.Tags)
+	}
+	if f1.CreatedAt.IsZero() {
+		t.Error("CreatedAt should be set")
+	}
+
+	// Create second feature - should auto-increment
+	f2 := s.CreateFeature("Billing", "Payment processing", "", nil)
+	if f2.ID != "FT-000002" {
+		t.Errorf("second feature ID = %q, want %q", f2.ID, "FT-000002")
+	}
+
+	// Verify features are retrievable
+	got1, ok := s.GetFeature("FT-000001")
+	if !ok {
+		t.Fatal("first feature should be retrievable")
+	}
+	if got1.Name != "Auth" {
+		t.Errorf("retrieved name = %q, want %q", got1.Name, "Auth")
+	}
+
+	got2, ok := s.GetFeature("FT-000002")
+	if !ok {
+		t.Fatal("second feature should be retrievable")
+	}
+	if got2.Name != "Billing" {
+		t.Errorf("retrieved name = %q, want %q", got2.Name, "Billing")
+	}
+}
+
+func TestCreateFeature_WithExistingFeatures(t *testing.T) {
+	s := New()
+	s.SeedFeatures(5) // Seeds FT-000001 through FT-000005
+
+	// New feature should get FT-000006
+	f := s.CreateFeature("New Feature", "Test", "", nil)
+	if f.ID != "FT-000006" {
+		t.Errorf("feature ID = %q, want %q", f.ID, "FT-000006")
+	}
+
+	// Verify we now have 6 features
+	features := s.SearchFeatures("", 100)
+	if len(features) != 6 {
+		t.Errorf("total features = %d, want 6", len(features))
+	}
+}
+
+func TestCreateFeature_Concurrent(t *testing.T) {
+	s := New()
+	done := make(chan string, 10)
+
+	// Create features concurrently
+	for i := range 10 {
+		go func(idx int) {
+			name := "Feature " + string(rune('A'+idx))
+			f := s.CreateFeature(name, "Summary", "", nil)
+			done <- f.ID
+		}(i)
+	}
+
+	// Collect all IDs
+	ids := make(map[string]bool)
+	for range 10 {
+		id := <-done
+		if ids[id] {
+			t.Errorf("duplicate ID created: %s", id)
+		}
+		ids[id] = true
+	}
+
+	// Should have 10 unique IDs
+	if len(ids) != 10 {
+		t.Errorf("created %d unique IDs, want 10", len(ids))
+	}
+}

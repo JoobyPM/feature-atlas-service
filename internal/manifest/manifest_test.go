@@ -38,7 +38,7 @@ func TestValidateLocalID(t *testing.T) {
 		{"with-hyphens", "FT-LOCAL-auth-flow", false},
 		{"complex", "FT-LOCAL-user-auth-v2-beta", false},
 		{"single-char", "FT-LOCAL-a", false},
-		{"max-length", "FT-LOCAL-" + string(make([]byte, 64)), false}, // Will fail - need valid chars
+		{"max-length", "FT-LOCAL-abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz12", false},
 
 		// Invalid cases
 		{"empty", "", true},
@@ -49,23 +49,9 @@ func TestValidateLocalID(t *testing.T) {
 		{"trailing-hyphen", "FT-LOCAL-auth-", true},
 		{"special-chars", "FT-LOCAL-auth_flow", true},
 		{"spaces", "FT-LOCAL-auth flow", true},
-		{"too-long", "FT-LOCAL-" + string(make([]byte, 65)), true},
+		{"too-long", "FT-LOCAL-abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz123", true},
 		{"server-format", "FT-000123", true},
 	}
-
-	// Fix max-length test case
-	tests[5] = struct {
-		name    string
-		id      string
-		wantErr bool
-	}{"max-length", "FT-LOCAL-abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz12", false}
-
-	// Fix too-long test case (65 chars after prefix)
-	tests[12] = struct {
-		name    string
-		id      string
-		wantErr bool
-	}{"too-long", "FT-LOCAL-abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz123", true}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -345,6 +331,26 @@ func TestAddFeature(t *testing.T) {
 			t.Error("AddFeature() should fail for duplicate ID")
 		}
 	})
+
+	t.Run("empty name", func(t *testing.T) {
+		t.Parallel()
+		m := New()
+
+		err := m.AddFeature("FT-LOCAL-auth", "", "Summary", "", nil)
+		if !errors.Is(err, ErrEmptyName) {
+			t.Errorf("AddFeature() error = %v, want ErrEmptyName", err)
+		}
+	})
+
+	t.Run("empty summary", func(t *testing.T) {
+		t.Parallel()
+		m := New()
+
+		err := m.AddFeature("FT-LOCAL-auth", "Auth", "", "", nil)
+		if !errors.Is(err, ErrEmptySummary) {
+			t.Errorf("AddFeature() error = %v, want ErrEmptySummary", err)
+		}
+	})
 }
 
 func TestListFeatures(t *testing.T) {
@@ -371,6 +377,25 @@ func TestListFeatures(t *testing.T) {
 		}
 		if _, ok := unsynced["FT-000123"]; ok {
 			t.Error("Synced feature should not be in unsynced list")
+		}
+	})
+
+	t.Run("returns copy not internal data", func(t *testing.T) {
+		t.Parallel()
+		m := New()
+		m.Features["FT-LOCAL-test"] = Entry{Name: "Test", Synced: false}
+
+		// Get list and modify it
+		list := m.ListFeatures(false)
+		delete(list, "FT-LOCAL-test")
+		list["FT-LOCAL-new"] = Entry{Name: "New"}
+
+		// Original should be unchanged
+		if !m.HasFeature("FT-LOCAL-test") {
+			t.Error("Original manifest should still have FT-LOCAL-test")
+		}
+		if m.HasFeature("FT-LOCAL-new") {
+			t.Error("Original manifest should not have FT-LOCAL-new")
 		}
 	})
 }

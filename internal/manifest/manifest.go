@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -249,8 +248,22 @@ func (m *Manifest) SaveWithLock(path string) error {
 	return f.Sync()
 }
 
+// ErrEmptyName indicates the feature name is empty.
+var ErrEmptyName = errors.New("feature name cannot be empty")
+
+// ErrEmptySummary indicates the feature summary is empty.
+var ErrEmptySummary = errors.New("feature summary cannot be empty")
+
 // AddFeature adds a new local feature to the manifest.
 func (m *Manifest) AddFeature(id, name, summary, owner string, tags []string) error {
+	// Validate required fields
+	if name == "" {
+		return ErrEmptyName
+	}
+	if summary == "" {
+		return ErrEmptySummary
+	}
+
 	// Validate ID format
 	if err := ValidateLocalID(id); err != nil {
 		return err
@@ -284,41 +297,15 @@ func (m *Manifest) HasFeature(id string) bool {
 	return ok
 }
 
-// ListFeatures returns all features, optionally filtered.
+// ListFeatures returns a copy of all features, optionally filtered to unsynced only.
+// The returned map is safe to modify without affecting the manifest.
 func (m *Manifest) ListFeatures(unsyncedOnly bool) map[string]Entry {
-	if !unsyncedOnly {
-		return m.Features
-	}
-
-	result := make(map[string]Entry)
+	result := make(map[string]Entry, len(m.Features))
 	for id, entry := range m.Features {
-		if !entry.Synced {
-			result[id] = entry
+		if unsyncedOnly && entry.Synced {
+			continue
 		}
+		result[id] = entry
 	}
 	return result
-}
-
-// acquireLock attempts to acquire an exclusive lock with timeout.
-func acquireLock(f *os.File, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	retryInterval := 50 * time.Millisecond
-
-	for {
-		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if err == nil {
-			return nil
-		}
-
-		if time.Now().After(deadline) {
-			return ErrLockTimeout
-		}
-
-		time.Sleep(retryInterval)
-	}
-}
-
-// releaseLock releases the file lock.
-func releaseLock(f *os.File) {
-	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) //nolint:errcheck // Best effort unlock
 }
