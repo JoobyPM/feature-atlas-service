@@ -129,9 +129,6 @@ func (s *Store) GetFeature(id string) (Feature, bool) {
 // MaxFeatureID is the maximum feature ID number (FT-999999).
 const MaxFeatureID = 999999
 
-// ErrIDSpaceExhausted is returned when no more feature IDs are available.
-var ErrIDSpaceExhausted = errors.New("feature ID space exhausted")
-
 // CreateFeature adds a new feature with a server-assigned ID.
 // Returns the created feature with the assigned ID.
 // Returns zero-value Feature if ID space is exhausted (should never happen in practice).
