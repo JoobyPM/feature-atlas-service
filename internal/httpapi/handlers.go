@@ -179,6 +179,21 @@ func (s *Server) handleAdminFeatures(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Field length limits
+	const maxNameLen, maxSummaryLen, maxOwnerLen = 200, 1000, 100
+	if len(req.Name) > maxNameLen {
+		http.Error(w, "name too long (max 200)", http.StatusBadRequest)
+		return
+	}
+	if len(req.Summary) > maxSummaryLen {
+		http.Error(w, "summary too long (max 1000)", http.StatusBadRequest)
+		return
+	}
+	if len(req.Owner) > maxOwnerLen {
+		http.Error(w, "owner too long (max 100)", http.StatusBadRequest)
+		return
+	}
+
 	// Sanitize tags
 	var tags []string
 	for _, t := range req.Tags {

@@ -624,6 +624,10 @@ Requires admin mTLS certificate.`,
 		// Save manifest
 		if err := m.SaveWithLock(path); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: failed to save manifest: %v\n", err)
+			if synced > 0 {
+				fmt.Fprintf(os.Stderr, "Warning: %d feature(s) were created on server but manifest was not updated\n", synced)
+				fmt.Fprintln(os.Stderr, "Run 'featctl manifest add <id>' to manually add the server features")
+			}
 			return exitErr(exitWrite, "failed to save manifest")
 		}
 
