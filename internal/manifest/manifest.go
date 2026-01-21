@@ -31,7 +31,6 @@ var (
 // Errors.
 var (
 	ErrManifestNotFound = errors.New("manifest not found")
-	ErrManifestExists   = errors.New("manifest already exists")
 	ErrInvalidID        = errors.New("invalid feature ID format")
 	ErrIDExists         = errors.New("feature ID already exists in manifest")
 	ErrLockTimeout      = errors.New("manifest locked by another process")
@@ -159,14 +158,42 @@ func Load(path string) (*Manifest, error) {
 	return &m, nil
 }
 
-// Save writes the manifest to the given path with file locking.
+// Save writes the manifest to the given path without locking.
+// Use SaveWithLock for concurrent-safe writes.
 func (m *Manifest) Save(path string) error {
+	return m.atomicWrite(path)
+}
+
+// SaveWithLock writes the manifest with exclusive file locking on the target.
+// This prevents concurrent writes to the same manifest file.
+// Uses atomic write (temp file + rename) to prevent corruption on crash.
+func (m *Manifest) SaveWithLock(path string) error {
+	// Open or create the target file for locking
+	// Config file needs 0644 for read access by other tools
+	lockFile, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644) //nolint:gosec // Config file, path from discovery
+	if err != nil {
+		return fmt.Errorf("open manifest for lock: %w", err)
+	}
+	defer lockFile.Close()
+
+	// Acquire exclusive lock on target file
+	if lockErr := acquireLock(lockFile, LockTimeout); lockErr != nil {
+		return lockErr
+	}
+	defer releaseLock(lockFile)
+
+	// Atomic write while holding lock
+	return m.atomicWrite(path)
+}
+
+// atomicWrite performs a crash-safe write using temp file + rename.
+func (m *Manifest) atomicWrite(path string) error {
 	data, err := yaml.Marshal(m)
 	if err != nil {
 		return fmt.Errorf("marshal manifest: %w", err)
 	}
 
-	// Atomic write: write to temp file, then rename
+	// Write to temp file in same directory (required for atomic rename)
 	dir := filepath.Dir(path)
 	tmpFile, err := os.CreateTemp(dir, ".feature-atlas-*.tmp")
 	if err != nil {
@@ -174,78 +201,37 @@ func (m *Manifest) Save(path string) error {
 	}
 	tmpPath := tmpFile.Name()
 
-	// Acquire lock on temp file
-	if err := acquireLock(tmpFile, LockTimeout); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath) //nolint:errcheck // Best effort cleanup
-		return err
-	}
-
-	// Write data
+	// Write data to temp file
 	if _, err := tmpFile.Write(data); err != nil {
-		releaseLock(tmpFile)
 		tmpFile.Close()
-		os.Remove(tmpPath) //nolint:errcheck // Best effort cleanup
+		_ = os.Remove(tmpPath) //nolint:errcheck // Best effort cleanup
 		return fmt.Errorf("write manifest: %w", err)
 	}
 
-	// Release lock before rename
-	releaseLock(tmpFile)
+	if err := tmpFile.Sync(); err != nil {
+		tmpFile.Close()
+		_ = os.Remove(tmpPath) //nolint:errcheck // Best effort cleanup
+		return fmt.Errorf("sync temp file: %w", err)
+	}
+
 	if err := tmpFile.Close(); err != nil {
-		os.Remove(tmpPath) //nolint:errcheck // Best effort cleanup
+		_ = os.Remove(tmpPath) //nolint:errcheck // Best effort cleanup
 		return fmt.Errorf("close temp file: %w", err)
 	}
 
 	// Set permissions (0644 for config files, readable by all)
 	if err := os.Chmod(tmpPath, 0o644); err != nil { //nolint:gosec // Config file needs read access
-		os.Remove(tmpPath) //nolint:errcheck // Best effort cleanup
+		_ = os.Remove(tmpPath) //nolint:errcheck // Best effort cleanup
 		return fmt.Errorf("set permissions: %w", err)
 	}
 
-	// Atomic rename
+	// Atomic rename (overwrites target if exists)
 	if err := os.Rename(tmpPath, path); err != nil {
-		os.Remove(tmpPath) //nolint:errcheck // Best effort cleanup
+		_ = os.Remove(tmpPath) //nolint:errcheck // Best effort cleanup
 		return fmt.Errorf("rename manifest: %w", err)
 	}
 
 	return nil
-}
-
-// SaveWithLock writes the manifest with exclusive file locking on the target.
-// This prevents concurrent writes to the same manifest file.
-func (m *Manifest) SaveWithLock(path string) error {
-	// Open or create the target file for locking
-	// Config file needs 0644 for read access by other tools
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644) //nolint:gosec // Config file, path from discovery
-	if err != nil {
-		return fmt.Errorf("open manifest for lock: %w", err)
-	}
-	defer f.Close()
-
-	// Acquire exclusive lock
-	if lockErr := acquireLock(f, LockTimeout); lockErr != nil {
-		return lockErr
-	}
-	defer releaseLock(f)
-
-	// Marshal and write
-	data, err := yaml.Marshal(m)
-	if err != nil {
-		return fmt.Errorf("marshal manifest: %w", err)
-	}
-
-	// Truncate and write
-	if err := f.Truncate(0); err != nil {
-		return fmt.Errorf("truncate manifest: %w", err)
-	}
-	if _, err := f.Seek(0, 0); err != nil {
-		return fmt.Errorf("seek manifest: %w", err)
-	}
-	if _, err := f.Write(data); err != nil {
-		return fmt.Errorf("write manifest: %w", err)
-	}
-
-	return f.Sync()
 }
 
 // ErrEmptyName indicates the feature name is empty.

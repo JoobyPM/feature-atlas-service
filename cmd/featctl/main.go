@@ -301,7 +301,7 @@ Use --offline to only check the local manifest (no server connection).`,
 // Resolution order: manifest first, then server (unless --offline).
 func checkFeatureExists(fid string) (bool, error) {
 	// Try manifest first
-	manifestFound := false
+	manifestLoaded := false
 	mPath, discoverErr := manifest.Discover(lintManifest)
 	if discoverErr == nil {
 		m, loadErr := manifest.Load(mPath)
@@ -309,14 +309,14 @@ func checkFeatureExists(fid string) (bool, error) {
 			if m.HasFeature(fid) {
 				return true, nil
 			}
-			manifestFound = true
+			manifestLoaded = true
 		}
 	}
 
 	// If --offline, don't check server
 	if lintOffline {
-		if !manifestFound && errors.Is(discoverErr, manifest.ErrManifestNotFound) {
-			return false, exitErr(exitIDExists, "manifest not found (required for --offline)")
+		if !manifestLoaded && errors.Is(discoverErr, manifest.ErrManifestNotFound) {
+			return false, exitErr(exitValidationError, "manifest not found (required for --offline)")
 		}
 		return false, nil
 	}
@@ -394,7 +394,7 @@ var manifestListCmd = &cobra.Command{
 		if err != nil {
 			if errors.Is(err, manifest.ErrInvalidYAML) {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				return exitErr(exitIDExists, "invalid YAML")
+				return exitErr(exitValidationError, "invalid YAML")
 			}
 			return err
 		}
@@ -453,6 +453,7 @@ var manifestAddCmd = &cobra.Command{
 	Long: `Fetch a feature from the server by ID and add it to the local manifest.
 This allows offline validation of existing server features.
 
+The feature ID must be a valid server ID format (FT-NNNNNN).
 Requires mTLS connection to the server.`,
 	Args: cobra.ExactArgs(1),
 	PreRunE: func(_ *cobra.Command, _ []string) error {
@@ -460,6 +461,13 @@ Requires mTLS connection to the server.`,
 	},
 	RunE: func(_ *cobra.Command, args []string) error {
 		targetID := args[0]
+
+		// Validate server ID format
+		if !manifest.ValidateServerID(targetID) {
+			fmt.Fprintf(os.Stderr, "Error: invalid server feature ID format: %s\n", targetID)
+			fmt.Fprintln(os.Stderr, "Server IDs must match format: FT-NNNNNN (e.g., FT-000123)")
+			return exitErr(exitValidationError, "invalid server ID format")
+		}
 
 		// Find manifest
 		path, err := manifest.Discover(manifestPath)
@@ -779,7 +787,11 @@ func init() {
 
 // truncate shortens a string to maxLen runes with ellipsis.
 // Uses rune count for proper UTF-8 handling.
+// If maxLen < 4, returns the string unchanged (no room for ellipsis).
 func truncate(s string, maxLen int) string {
+	if maxLen < 4 {
+		return s
+	}
 	if utf8.RuneCountInString(s) <= maxLen {
 		return s
 	}

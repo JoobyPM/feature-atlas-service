@@ -240,10 +240,9 @@ func TestLoad_EmptyFeatures(t *testing.T) {
 }
 
 func TestDiscover(t *testing.T) {
-	t.Parallel()
+	// Not parallel because some subtests modify CWD (global state)
 
 	t.Run("explicit path exists", func(t *testing.T) {
-		t.Parallel()
 		dir := t.TempDir()
 		path := filepath.Join(dir, DefaultFilename)
 
@@ -262,15 +261,16 @@ func TestDiscover(t *testing.T) {
 	})
 
 	t.Run("explicit path not found", func(t *testing.T) {
-		t.Parallel()
 		_, err := Discover("/nonexistent/.feature-atlas.yaml")
 		if err == nil {
 			t.Error("Discover() should fail for nonexistent explicit path")
 		}
 	})
 
+	// NOTE: Tests using os.Chdir cannot be parallel since CWD is global state.
+	// They are run sequentially.
+
 	t.Run("no manifest found", func(t *testing.T) {
-		t.Parallel()
 		dir := t.TempDir()
 
 		// Change to temp dir (no manifest)
@@ -283,6 +283,68 @@ func TestDiscover(t *testing.T) {
 		_, err := Discover("")
 		if !errors.Is(err, ErrManifestNotFound) {
 			t.Errorf("Discover() error = %v, want ErrManifestNotFound", err)
+		}
+	})
+
+	t.Run("finds manifest in cwd", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, DefaultFilename)
+
+		// Create manifest in temp dir
+		if err := os.WriteFile(path, []byte("version: \"1\""), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		// Change to temp dir
+		oldDir, _ := os.Getwd()
+		if err := os.Chdir(dir); err != nil {
+			t.Skip("cannot chdir")
+		}
+		defer func() { _ = os.Chdir(oldDir) }()
+
+		found, err := Discover("")
+		if err != nil {
+			t.Fatalf("Discover() error = %v", err)
+		}
+
+		// Resolve symlinks for comparison (macOS: /var -> /private/var)
+		wantResolved, _ := filepath.EvalSymlinks(path)
+		foundResolved, _ := filepath.EvalSymlinks(found)
+		if foundResolved != wantResolved {
+			t.Errorf("Discover() = %q, want %q", found, path)
+		}
+	})
+
+	t.Run("finds manifest in parent directory", func(t *testing.T) {
+		parentDir := t.TempDir()
+		childDir := filepath.Join(parentDir, "subdir")
+		if err := os.Mkdir(childDir, 0o750); err != nil {
+			t.Fatal(err)
+		}
+		manifestPath := filepath.Join(parentDir, DefaultFilename)
+
+		// Create manifest in parent dir
+		if err := os.WriteFile(manifestPath, []byte("version: \"1\""), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		// Change to child dir
+		oldDir, _ := os.Getwd()
+		if err := os.Chdir(childDir); err != nil {
+			t.Skip("cannot chdir")
+		}
+		defer func() { _ = os.Chdir(oldDir) }()
+
+		found, err := Discover("")
+		if err != nil {
+			t.Fatalf("Discover() error = %v", err)
+		}
+
+		// Resolve symlinks for comparison (macOS: /var -> /private/var)
+		wantResolved, _ := filepath.EvalSymlinks(manifestPath)
+		foundResolved, _ := filepath.EvalSymlinks(found)
+		if foundResolved != wantResolved {
+			t.Errorf("Discover() = %q, want %q", found, manifestPath)
 		}
 	})
 }
@@ -412,6 +474,47 @@ func TestHasFeature(t *testing.T) {
 	if m.HasFeature("FT-LOCAL-nonexistent") {
 		t.Error("HasFeature() should return false for nonexistent feature")
 	}
+}
+
+func TestGetFeature(t *testing.T) {
+	t.Parallel()
+
+	m := New()
+	m.Features["FT-LOCAL-auth"] = Entry{
+		Name:    "Auth",
+		Summary: "Authentication flow",
+		Owner:   "Security",
+		Tags:    []string{"auth", "security"},
+		Synced:  false,
+	}
+
+	t.Run("existing feature", func(t *testing.T) {
+		t.Parallel()
+		entry, ok := m.GetFeature("FT-LOCAL-auth")
+		if !ok {
+			t.Fatal("GetFeature() should return true for existing feature")
+		}
+		if entry.Name != "Auth" {
+			t.Errorf("Name = %q, want %q", entry.Name, "Auth")
+		}
+		if entry.Summary != "Authentication flow" {
+			t.Errorf("Summary = %q, want %q", entry.Summary, "Authentication flow")
+		}
+		if entry.Owner != "Security" {
+			t.Errorf("Owner = %q, want %q", entry.Owner, "Security")
+		}
+		if len(entry.Tags) != 2 {
+			t.Errorf("Tags length = %d, want 2", len(entry.Tags))
+		}
+	})
+
+	t.Run("nonexistent feature", func(t *testing.T) {
+		t.Parallel()
+		_, ok := m.GetFeature("FT-LOCAL-nonexistent")
+		if ok {
+			t.Error("GetFeature() should return false for nonexistent feature")
+		}
+	})
 }
 
 func TestSaveWithLock_Concurrent(t *testing.T) {

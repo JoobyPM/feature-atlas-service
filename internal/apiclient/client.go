@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -243,12 +244,11 @@ func (c *Client) CreateFeature(ctx context.Context, req CreateFeatureRequest) (*
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/admin/v1/features", nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/admin/v1/features", io.NopCloser(bytes.NewReader(body)))
 	if err != nil {
 		return nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Body = nopCloser{bytes.NewReader(body)}
 	httpReq.ContentLength = int64(len(body))
 
 	resp, err := c.HTTP.Do(httpReq)
@@ -272,11 +272,3 @@ func (c *Client) CreateFeature(ctx context.Context, req CreateFeatureRequest) (*
 		return nil, fmt.Errorf("create feature failed: %s", resp.Status)
 	}
 }
-
-// nopCloser wraps an io.Reader to implement io.ReadCloser.
-type nopCloser struct {
-	r *bytes.Reader
-}
-
-func (n nopCloser) Read(p []byte) (int, error) { return n.r.Read(p) }
-func (n nopCloser) Close() error               { return nil }
