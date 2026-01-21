@@ -2,6 +2,7 @@
 package apiclient
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -225,3 +226,57 @@ func (c *Client) FeatureExists(ctx context.Context, id string) (bool, error) {
 	}
 	return true, nil
 }
+
+// CreateFeatureRequest is the request body for creating a feature.
+type CreateFeatureRequest struct {
+	Name    string   `json:"name"`
+	Summary string   `json:"summary"`
+	Owner   string   `json:"owner,omitempty"`
+	Tags    []string `json:"tags,omitempty"`
+}
+
+// CreateFeature creates a new feature on the server (admin only).
+// Returns the created feature with the server-assigned ID.
+func (c *Client) CreateFeature(ctx context.Context, req CreateFeatureRequest) (*Feature, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/admin/v1/features", nil)
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Body = nopCloser{bytes.NewReader(body)}
+	httpReq.ContentLength = int64(len(body))
+
+	resp, err := c.HTTP.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusCreated:
+		var f Feature
+		if decodeErr := json.NewDecoder(resp.Body).Decode(&f); decodeErr != nil {
+			return nil, decodeErr
+		}
+		return &f, nil
+	case http.StatusForbidden:
+		return nil, errors.New("admin role required")
+	case http.StatusBadRequest:
+		return nil, errors.New("invalid request: name and summary required")
+	default:
+		return nil, fmt.Errorf("create feature failed: %s", resp.Status)
+	}
+}
+
+// nopCloser wraps an io.Reader to implement io.ReadCloser.
+type nopCloser struct {
+	r *bytes.Reader
+}
+
+func (n nopCloser) Read(p []byte) (int, error) { return n.r.Read(p) }
+func (n nopCloser) Close() error               { return nil }
