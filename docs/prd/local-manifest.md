@@ -286,12 +286,12 @@ features:
 
 ## Implementation Phases
 
-### Phase 1: Core Manifest
-- [ ] `internal/manifest` package (types, read/write, validation, locking)
-- [ ] `featctl manifest init` command
-- [ ] `featctl manifest list` command
-- [ ] `featctl feature create` command (local only, no `--sync`)
-- [ ] Unit tests for manifest package
+### Phase 1: Core Manifest ✅
+- [x] `internal/manifest` package (types, read/write, validation, locking)
+- [x] `featctl manifest init` command
+- [x] `featctl manifest list` command
+- [x] `featctl feature create` command (local only, no `--sync`)
+- [x] Unit tests for manifest package
 
 ### Phase 2: Server Integration
 - [ ] `POST /admin/v1/features` endpoint
