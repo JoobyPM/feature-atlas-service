@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -55,12 +56,14 @@ func (i suggestionItem) Title() string       { return fmt.Sprintf("%s - %s", i.i
 func (i suggestionItem) Description() string { return truncate(i.summary, 60) }
 func (i suggestionItem) FilterValue() string { return i.id + " " + i.name }
 
-// truncate shortens a string to maxLen with ellipsis.
+// truncate shortens a string to maxLen runes with ellipsis.
+// Uses rune count for proper UTF-8 handling.
 func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	if utf8.RuneCountInString(s) <= maxLen {
 		return s
 	}
-	return s[:maxLen-3] + "..."
+	runes := []rune(s)
+	return string(runes[:maxLen-3]) + "..."
 }
 
 // State represents the current UI state.

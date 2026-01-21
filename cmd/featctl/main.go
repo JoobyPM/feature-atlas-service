@@ -4,10 +4,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -144,11 +146,10 @@ var getCmd = &cobra.Command{
 
 		feature, err := client.GetFeature(ctx, args[0])
 		if err != nil {
+			if errors.Is(err, apiclient.ErrFeatureNotFound) {
+				return fmt.Errorf("feature not found: %s", args[0])
+			}
 			return err
-		}
-
-		if feature == nil {
-			return fmt.Errorf("feature not found: %s", args[0])
 		}
 
 		switch getOutput {
@@ -250,10 +251,12 @@ func init() {
 	rootCmd.AddCommand(lintCmd)
 }
 
-// truncate shortens a string to maxLen with ellipsis.
+// truncate shortens a string to maxLen runes with ellipsis.
+// Uses rune count for proper UTF-8 handling.
 func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	if utf8.RuneCountInString(s) <= maxLen {
 		return s
 	}
-	return s[:maxLen-3] + "..."
+	runes := []rune(s)
+	return string(runes[:maxLen-3]) + "..."
 }

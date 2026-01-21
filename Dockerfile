@@ -23,7 +23,7 @@ FROM alpine:3.19
 
 WORKDIR /app
 
-# Install CA certificates for TLS
+# Install CA certificates for TLS and wget for health checks
 RUN apk add --no-cache ca-certificates
 
 # Create non-root user
@@ -38,13 +38,13 @@ VOLUME /app/certs
 # Switch to non-root user
 USER appuser
 
-# Expose HTTPS port
-EXPOSE 8443
+# Expose ports: HTTPS (mTLS) and HTTP (health)
+EXPOSE 8443 8080
 
-# Health check
+# Health check uses the dedicated health port (no mTLS required)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD wget --no-check-certificate --spider https://localhost:8443/api/v1/me 2>/dev/null || exit 1
+    CMD wget --spider http://localhost:8080/healthz 2>/dev/null || exit 1
 
 # Default command
 ENTRYPOINT ["/app/feature-atlasd"]
-CMD ["-listen", ":8443", "-tls-cert", "/app/certs/server.crt", "-tls-key", "/app/certs/server.key", "-client-ca", "/app/certs/ca.crt", "-admin-cert", "/app/certs/admin.crt"]
+CMD ["-listen", ":8443", "-health-port", ":8080", "-tls-cert", "/app/certs/server.crt", "-tls-key", "/app/certs/server.key", "-client-ca", "/app/certs/ca.crt", "-admin-cert", "/app/certs/admin.crt"]

@@ -32,6 +32,36 @@ func (s *Server) Routes() http.Handler {
 	return mux
 }
 
+// HealthRoutes returns routes that don't require authentication.
+func (s *Server) HealthRoutes() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", s.handleHealthz)
+	mux.HandleFunc("/readyz", s.handleReadyz)
+	return mux
+}
+
+// handleHealthz returns basic liveness status.
+func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+}
+
+// handleReadyz returns readiness status including feature count.
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	features := s.Store.SearchFeatures("", 1)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":          "ok",
+		"features_loaded": len(features) > 0,
+	})
+}
+
 // handleMe returns information about the authenticated client.
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {

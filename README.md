@@ -243,12 +243,20 @@ Command-line flags for `feature-atlasd`:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-listen` | `:8443` | Listen address |
+| `-listen` | `:8443` | HTTPS listen address (mTLS required) |
+| `-health-port` | `:8080` | HTTP health check port (no auth) |
 | `-tls-cert` | `certs/server.crt` | Server certificate |
 | `-tls-key` | `certs/server.key` | Server private key |
 | `-client-ca` | `certs/ca.crt` | CA for verifying client certs |
 | `-admin-cert` | `certs/admin.crt` | Admin cert (bootstrapped at startup) |
 | `-seed` | `200` | Number of features to seed |
+
+### Health Endpoints (No Auth Required)
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /healthz` | Liveness probe - returns `{"status": "ok"}` |
+| `GET /readyz` | Readiness probe - includes feature count check |
 
 ## Related
 
