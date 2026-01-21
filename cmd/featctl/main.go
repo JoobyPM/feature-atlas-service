@@ -43,6 +43,8 @@ var (
 
 	// Lint flags
 	minDescLength int
+	lintOffline   bool
+	lintManifest  string
 
 	// Manifest flags
 	manifestPath     string
@@ -225,11 +227,11 @@ var lintCmd = &cobra.Command{
 	Use:   "lint <file>",
 	Short: "Validate a YAML file against the feature catalog",
 	Long: `Lint validates that feature references in a YAML file exist in
-the catalog. The YAML file should have a 'feature_id' field.`,
+the catalog. The YAML file should have a 'feature_id' field.
+
+By default, lint checks the local manifest first, then falls back to the server.
+Use --offline to only check the local manifest (no server connection).`,
 	Args: cobra.ExactArgs(1),
-	PreRunE: func(_ *cobra.Command, _ []string) error {
-		return initClient()
-	},
 	RunE: func(_ *cobra.Command, args []string) error {
 		data, err := os.ReadFile(args[0])
 		if err != nil {
@@ -250,14 +252,11 @@ the catalog. The YAML file should have a 'feature_id' field.`,
 		if doc.FeatureID == "" {
 			errs = append(errs, "missing required field: feature_id")
 		} else {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-
-			exists, err := client.FeatureExists(ctx, doc.FeatureID)
-			if err != nil {
-				return fmt.Errorf("check feature: %w", err)
+			found, checkErr := checkFeatureExists(doc.FeatureID)
+			if checkErr != nil {
+				return checkErr
 			}
-			if !exists {
+			if !found {
 				errs = append(errs, fmt.Sprintf("feature_id '%s' not found in catalog", doc.FeatureID))
 			}
 		}
@@ -278,6 +277,46 @@ the catalog. The YAML file should have a 'feature_id' field.`,
 		fmt.Printf("✓ %s is valid\n", args[0])
 		return nil
 	},
+}
+
+// checkFeatureExists checks if a feature exists in manifest or server.
+// Resolution order: manifest first, then server (unless --offline).
+func checkFeatureExists(featureID string) (bool, error) {
+	// Try manifest first
+	manifestFound := false
+	mPath, discoverErr := manifest.Discover(lintManifest)
+	if discoverErr == nil {
+		m, loadErr := manifest.Load(mPath)
+		if loadErr == nil {
+			if m.HasFeature(featureID) {
+				return true, nil
+			}
+			manifestFound = true
+		}
+	}
+
+	// If --offline, don't check server
+	if lintOffline {
+		if !manifestFound && errors.Is(discoverErr, manifest.ErrManifestNotFound) {
+			fmt.Fprintln(os.Stderr, "Error: manifest not found (required for --offline)")
+			os.Exit(exitIDExists) // Exit 2 for manifest parse error per PRD
+		}
+		return false, nil
+	}
+
+	// Fall back to server
+	if initErr := initClient(); initErr != nil {
+		return false, fmt.Errorf("init client: %w", initErr)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	exists, serverErr := client.FeatureExists(ctx, featureID)
+	if serverErr != nil {
+		return false, fmt.Errorf("check feature: %w", serverErr)
+	}
+	return exists, nil
 }
 
 // manifestCmd is the parent command for manifest operations.
@@ -677,6 +716,8 @@ func init() {
 
 	// Lint flags
 	lintCmd.Flags().IntVar(&minDescLength, "min-desc-length", 10, "Minimum description length")
+	lintCmd.Flags().BoolVar(&lintOffline, "offline", false, "Only check local manifest (no server connection)")
+	lintCmd.Flags().StringVar(&lintManifest, "manifest", "", "Custom manifest path")
 
 	// Manifest init flags
 	manifestInitCmd.Flags().StringVar(&manifestPath, "manifest", "", "Custom manifest path")
