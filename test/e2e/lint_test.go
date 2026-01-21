@@ -54,10 +54,22 @@ func fileExists(path string) bool {
 }
 
 // runFeatctl executes featctl with the given arguments.
+// Applies a timeout to prevent hung tests if featctl blocks.
 func runFeatctl(t *testing.T, workDir string, args ...string) (string, string, int) {
 	t.Helper()
 
-	cmd := exec.Command(featctlPath(), args...)
+	// Fail fast if featctl hangs - default 30s timeout
+	timeout := 30 * time.Second
+	if deadline, ok := t.Deadline(); ok {
+		// Use remaining test time minus 2s buffer
+		if remain := time.Until(deadline) - 2*time.Second; remain > 0 {
+			timeout = remain
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, featctlPath(), args...)
 	cmd.Dir = workDir
 
 	var stdout, stderr strings.Builder
@@ -65,6 +77,11 @@ func runFeatctl(t *testing.T, workDir string, args ...string) (string, string, i
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
+
+	// Check for timeout before other errors
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatalf("featctl timed out after %s", timeout)
+	}
 
 	exitCode := 0
 	if err != nil {

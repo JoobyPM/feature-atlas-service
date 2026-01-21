@@ -28,14 +28,14 @@ Use [testcontainers-go](https://golang.testcontainers.org/) for containerized se
 
 ### Dependencies to Add
 
-```
+```text
 github.com/stretchr/testify v1.11.1
 github.com/testcontainers/testcontainers-go v0.40.0
 ```
 
 ### Test Structure
 
-```
+```text
 test/
 ├── integration/
 │   ├── testutil/
@@ -98,7 +98,7 @@ test/
 
 ### B6: TestManifestSync_SingleFeature
 
-```
+```text
 Given: Manifest with FT-LOCAL-auth (synced: false)
 When:  Run `featctl manifest sync`
 Then:  
@@ -109,7 +109,7 @@ Then:
 
 ### C3: TestLint_Offline_Valid
 
-```
+```text
 Given: 
   - Manifest with FT-LOCAL-dashboard (synced: false)
   - YAML file with feature_id: FT-LOCAL-dashboard
@@ -119,7 +119,7 @@ Then:  Exit 0, feature validated against manifest
 
 ### C4: TestLint_Offline_NotFound
 
-```
+```text
 Given:
   - Manifest without FT-LOCAL-unknown
   - YAML file with feature_id: FT-LOCAL-unknown  
@@ -132,11 +132,11 @@ Then:  Exit 1, error "feature not found in manifest"
 ```makefile
 .PHONY: test-integration
 test-integration: docker-build
-	go test -v -count=1 -tags=integration ./test/integration/...
+    go test -v -count=1 -tags=integration ./test/integration/...
 
 .PHONY: test-e2e
 test-e2e: docker-build build
-	go test -v -count=1 -tags=e2e ./test/e2e/...
+    go test -v -count=1 -tags=e2e ./test/e2e/...
 
 .PHONY: test-all
 test-all: test test-integration test-e2e
