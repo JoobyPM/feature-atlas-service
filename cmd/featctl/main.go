@@ -495,7 +495,10 @@ Requires mTLS connection to the server.`,
 		m, err := manifest.Load(path)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			return exitErr(exitWrite, "failed to load manifest")
+			if errors.Is(err, manifest.ErrInvalidYAML) {
+				return exitErr(exitValidation, "invalid manifest YAML")
+			}
+			return exitErr(exitValidation, "failed to load manifest")
 		}
 
 		// Check if already in manifest
@@ -565,7 +568,10 @@ Requires admin mTLS certificate.`,
 		m, err := manifest.Load(path)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			return exitErr(exitWrite, "failed to load manifest")
+			if errors.Is(err, manifest.ErrInvalidYAML) {
+				return exitErr(exitValidation, "invalid manifest YAML")
+			}
+			return exitErr(exitValidation, "failed to load manifest")
 		}
 
 		// Find unsynced features
@@ -701,7 +707,10 @@ Examples:
 		m, err := manifest.Load(path)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			return exitErr(exitWrite, "failed to load manifest")
+			if errors.Is(err, manifest.ErrInvalidYAML) {
+				return exitErr(exitValidation, "invalid manifest YAML")
+			}
+			return exitErr(exitValidation, "failed to load manifest")
 		}
 
 		// Parse tags
