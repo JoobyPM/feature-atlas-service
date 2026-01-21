@@ -137,6 +137,9 @@ func (s *Store) CreateFeature(name, summary, owner string, tags []string) Featur
 
 	// Find next available ID with bounded search
 	nextNum := len(s.features) + 1
+	if nextNum > MaxFeatureID {
+		nextNum = 1 // Normalize before loop starts
+	}
 	for range MaxFeatureID {
 		id := "FT-" + leftPadInt(nextNum, 6)
 		if _, exists := s.features[id]; !exists {
