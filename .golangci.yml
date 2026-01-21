@@ -1,0 +1,270 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  relative-path-mode: gomod
+  modules-download-mode: readonly
+
+output:
+  formats:
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
+  show-stats: true
+
+# Formatters - run with: golangci-lint fmt
+formatters:
+  enable:
+    - gofumpt # stricter gofmt (superset)
+    - gci # import grouping and ordering
+  settings:
+    gofumpt:
+      module-path: github.com/JoobyPM/feature-atlas-service
+      extra-rules: true
+    gci:
+      sections:
+        - standard # stdlib
+        - default # external packages
+        - prefix(github.com/JoobyPM) # organization packages
+        - localmodule # current module
+
+linters:
+  default: none
+  enable:
+    - recvcheck
+    - revive
+
+    # Logging
+    - sloglint # ensures slog is used correctly
+    - loggercheck # checks key/value logging pairs
+
+    # Error handling
+    - errcheck # catch ignored errors
+    - errchkjson # json encode/decode error checks
+    - errorlint # use errors.Is/As and %w correctly
+    - errname # Err prefix for sentinel errors, *Error suffix for types
+    - nilerr # return nil after err != nil check
+    - nilnil # return invalid value paired with nil error
+    - nilnesserr # inconsistent nil handling around error checks
+
+    # Context handling
+    - contextcheck # ensures context is passed through call chains
+    - containedctx # warns against storing context in structs
+    - fatcontext # detects contexts nested in multiple levels
+    - noctx # finds HTTP requests without context
+
+    # Security
+    - gosec # detects security problems (SQL injection, file traversal, etc.)
+
+    # SQL Safety
+    - sqlclosecheck # checks sql.Rows/sql.Stmt are closed
+    - rowserrcheck # checks whether Rows.Err is checked
+
+    # Resource Cleanup
+    - bodyclose # checks HTTP response bodies are closed
+
+    # Code quality and simplification
+    - durationcheck # catches duration multiplication mistakes
+    - govet # Go's official static analyzer
+    - staticcheck # advanced static analysis (includes gosimple, stylecheck)
+    - ineffassign # detects ineffectual assignments
+    - unconvert # removes unnecessary type conversions
+    - unused # finds unused constants, variables, functions
+    - makezero # finds slice declarations with non-zero length and append
+    - wastedassign # finds wasted assignments
+    - goconst # finds repeated strings that could be constants
+    - unparam # finds unused function parameters
+    - nakedret # flags naked returns in long functions
+    - reassign # detects reassigning top-level variables
+
+    # Correctness
+    - exhaustive # ensures switch statements handle all enum cases
+    - copyloopvar # catches loop variable capture bugs
+    - intrange # suggests range over integers (Go 1.22+)
+
+    # Code hygiene
+    - nolintlint # ensures //nolint directives have justification
+    - dupword # catches duplicate words in comments
+    - misspell # catches misspelled words
+
+    # Style and formatting
+    - whitespace # detects leading/trailing whitespace
+    - usestdlibvars # use http.MethodGet instead of "GET", etc.
+    - inamedparam # require named params in interface methods
+
+    # Testing
+    - thelper # ensures t.Helper() is called in test helpers
+    - testifylint # testify best practices
+
+    # Performance
+    - prealloc # finds slice declarations that could be preallocated
+    - perfsprint # suggests strconv over fmt.Sprintf for primitives
+
+    # Import control
+    - depguard # prevents importing deprecated/banned packages
+
+  settings:
+    revive:
+      enable-default-rules: true
+      rules:
+        - name: import-shadowing
+          severity: warning
+        - name: blank-imports
+          severity: warning
+        - name: context-as-argument
+          severity: error
+        - name: context-keys-type
+          severity: warning
+        - name: early-return
+          severity: warning
+        - name: error-return
+          severity: warning
+        - name: error-naming
+          severity: warning
+        - name: unexported-return
+          severity: warning
+        - name: indent-error-flow
+          severity: warning
+        - name: superfluous-else
+          severity: warning
+        - name: unreachable-code
+          severity: error
+        - name: redefines-builtin-id
+          severity: error
+        # Modern Go style
+        - name: use-any
+          severity: warning # enforce 'any' over 'interface{}'
+        - name: var-naming
+          severity: warning
+        - name: time-naming
+          severity: warning
+        - name: unnecessary-stmt
+          severity: warning
+        - name: deep-exit
+          severity: warning # avoid os.Exit in non-main
+        - name: identical-branches
+          severity: warning
+        - name: bool-literal-in-expr
+          severity: warning
+        - name: constant-logical-expr
+          severity: error
+        - name: unconditional-recursion
+          severity: error
+        - name: waitgroup-by-value
+          severity: error
+
+    unparam:
+      check-exported: true
+
+    testifylint:
+      enable-all: true
+
+    inamedparam:
+      skip-single-param: true # allow single unnamed params
+
+    sloglint:
+      context: all
+      no-global: default
+
+    errcheck:
+      check-blank: true
+      check-type-assertions: true
+      exclude-functions:
+        # Deferred cleanup - errors logged/handled elsewhere or safe to ignore
+        - "(io.Closer).Close"
+        - "(*os.File).Close"
+        - "(*database/sql.DB).Close"
+        - "(*database/sql.Rows).Close"
+        - "(*database/sql.Stmt).Close"
+        - "(*database/sql.Tx).Rollback"
+        - "(*net/http.Response).Body.Close"
+        - "(*archive/zip.ReadCloser).Close"
+        # Writers where partial writes are acceptable or caller handles
+        - "(net/http.ResponseWriter).Write"
+        - "(*bytes.Buffer).Write"
+        - "(*bytes.Buffer).WriteString"
+        - "(*strings.Builder).Write"
+        - "(*strings.Builder).WriteString"
+        # Fmt functions writing to ResponseWriter/Buffer (errors checked by caller)
+        - "fmt.Fprint"
+        - "fmt.Fprintf"
+        - "fmt.Fprintln"
+        # Crypto rand - panics on failure, error check redundant
+        - "(*crypto/rand.Reader).Read"
+        - "crypto/rand.Read"
+        # JSON encoder to ResponseWriter
+        - "(*encoding/json.Encoder).Encode"
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+    nakedret:
+      max-func-lines: 30
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: "io/ioutil"
+              desc: "deprecated since Go 1.16, use io and os packages"
+            - pkg: "github.com/pkg/errors"
+              desc: "use standard errors package with %w"
+
+    gosec:
+      excludes:
+        - G104 # Audit errors not checked - handled by errcheck
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+
+    staticcheck:
+      checks:
+        - all
+        - "-ST1000"
+
+  exclusions:
+    generated: strict
+    warn-unused: false
+    rules:
+      # Relaxed checks for test files
+      - path: _test\.go
+        linters:
+          - sloglint
+          - errcheck
+          - govet
+          - staticcheck
+          - unparam
+          - goconst
+          - inamedparam
+          - usestdlibvars # allow "GET" instead of http.MethodGet in tests
+          - testifylint # allow both assert.X and s.Assert().X patterns
+
+      # Allow dot imports in tests for testify
+      - path: _test\.go
+        text: "dot imports"
+        linters:
+          - revive
+
+      # Allow deep-exit in main packages and cmd
+      - path: (cmd/|main\.go)
+        text: "deep-exit"
+        linters:
+          - revive
+
+      # TUI applications can have complex main functions
+      - path: cmd/featctl/
+        linters:
+          - contextcheck # TUI has its own context management
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
