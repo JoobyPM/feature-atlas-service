@@ -588,3 +588,177 @@ func TestFilePermissions(t *testing.T) {
 		t.Errorf("File permissions = %o, want 0644", perm)
 	}
 }
+
+// =============================================================================
+// Benchmarks
+// =============================================================================
+
+func BenchmarkLoad(b *testing.B) {
+	dir := b.TempDir()
+	path := filepath.Join(dir, DefaultFilename)
+
+	// Create manifest with 100 features
+	m := New()
+	for i := range 100 {
+		m.Features["FT-LOCAL-test-"+leftPad(i, 3)] = Entry{
+			Name:    "Test Feature",
+			Summary: "Test summary for benchmarking",
+			Owner:   "Test Team",
+			Tags:    []string{"test", "benchmark"},
+			Synced:  i%2 == 0,
+		}
+	}
+	if err := m.Save(path); err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		_, _ = Load(path)
+	}
+}
+
+func BenchmarkSave(b *testing.B) {
+	dir := b.TempDir()
+	path := filepath.Join(dir, DefaultFilename)
+
+	// Create manifest with 100 features
+	m := New()
+	for i := range 100 {
+		m.Features["FT-LOCAL-test-"+leftPad(i, 3)] = Entry{
+			Name:    "Test Feature",
+			Summary: "Test summary for benchmarking",
+			Owner:   "Test Team",
+			Tags:    []string{"test", "benchmark"},
+			Synced:  i%2 == 0,
+		}
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		_ = m.Save(path)
+	}
+}
+
+func BenchmarkSaveWithLock(b *testing.B) {
+	dir := b.TempDir()
+	path := filepath.Join(dir, DefaultFilename)
+
+	// Create manifest with 100 features
+	m := New()
+	for i := range 100 {
+		m.Features["FT-LOCAL-test-"+leftPad(i, 3)] = Entry{
+			Name:    "Test Feature",
+			Summary: "Test summary for benchmarking",
+			Owner:   "Test Team",
+			Tags:    []string{"test", "benchmark"},
+			Synced:  i%2 == 0,
+		}
+	}
+	// Create initial file for lock
+	if err := m.Save(path); err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		_ = m.SaveWithLock(path)
+	}
+}
+
+func BenchmarkListFeatures(b *testing.B) {
+	m := New()
+	for i := range 100 {
+		m.Features["FT-LOCAL-test-"+leftPad(i, 3)] = Entry{
+			Name:   "Test",
+			Synced: i%2 == 0,
+		}
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		_ = m.ListFeatures(false)
+	}
+}
+
+func BenchmarkListFeaturesUnsyncedOnly(b *testing.B) {
+	m := New()
+	for i := range 100 {
+		m.Features["FT-LOCAL-test-"+leftPad(i, 3)] = Entry{
+			Name:   "Test",
+			Synced: i%2 == 0,
+		}
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		_ = m.ListFeatures(true)
+	}
+}
+
+func BenchmarkHasFeature(b *testing.B) {
+	m := New()
+	for i := range 100 {
+		m.Features["FT-LOCAL-test-"+leftPad(i, 3)] = Entry{Name: "Test"}
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		_ = m.HasFeature("FT-LOCAL-test-050")
+	}
+}
+
+func BenchmarkAddFeature(b *testing.B) {
+	b.ResetTimer()
+	for range b.N {
+		m := New()
+		_ = m.AddFeature("FT-LOCAL-test", "Test", "Summary", "Owner", []string{"tag"})
+	}
+}
+
+func BenchmarkValidateLocalID(b *testing.B) {
+	for range b.N {
+		_ = ValidateLocalID("FT-LOCAL-auth-flow-v2")
+	}
+}
+
+func BenchmarkValidateServerID(b *testing.B) {
+	for range b.N {
+		_ = ValidateServerID("FT-000123")
+	}
+}
+
+func BenchmarkDiscoverExplicit(b *testing.B) {
+	dir := b.TempDir()
+	path := filepath.Join(dir, DefaultFilename)
+
+	m := New()
+	if err := m.Save(path); err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		_, _ = Discover(path)
+	}
+}
+
+// leftPad is a helper for benchmarks
+func leftPad(n, width int) string {
+	s := ""
+	for range width {
+		s = "0" + s
+	}
+	ns := ""
+	for n > 0 {
+		ns = string(rune('0'+n%10)) + ns
+		n /= 10
+	}
+	if ns == "" {
+		ns = "0"
+	}
+	if len(ns) >= width {
+		return ns
+	}
+	return s[:width-len(ns)] + ns
+}

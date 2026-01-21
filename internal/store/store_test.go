@@ -421,3 +421,142 @@ func TestCreateFeature_Concurrent(t *testing.T) {
 		t.Errorf("created %d unique IDs, want 10", len(ids))
 	}
 }
+
+// =============================================================================
+// Benchmarks
+// =============================================================================
+
+func BenchmarkSearchFeatures(b *testing.B) {
+	s := New()
+	s.SeedFeatures(200)
+
+	b.ResetTimer()
+	for range b.N {
+		_ = s.SearchFeatures("enable", 20)
+	}
+}
+
+func BenchmarkSearchFeatures_EmptyQuery(b *testing.B) {
+	s := New()
+	s.SeedFeatures(200)
+
+	b.ResetTimer()
+	for range b.N {
+		_ = s.SearchFeatures("", 20)
+	}
+}
+
+func BenchmarkSearchFeatures_NoMatch(b *testing.B) {
+	s := New()
+	s.SeedFeatures(200)
+
+	b.ResetTimer()
+	for range b.N {
+		_ = s.SearchFeatures("xyznonexistent", 20)
+	}
+}
+
+func BenchmarkGetFeature(b *testing.B) {
+	s := New()
+	s.SeedFeatures(200)
+
+	b.ResetTimer()
+	for range b.N {
+		_, _ = s.GetFeature("FT-000100")
+	}
+}
+
+func BenchmarkCreateFeature(b *testing.B) {
+	s := New()
+
+	b.ResetTimer()
+	for range b.N {
+		s.CreateFeature("Test", "Summary", "Owner", []string{"tag"})
+	}
+}
+
+func BenchmarkUpsertClient(b *testing.B) {
+	s := New()
+	client := Client{
+		Fingerprint: "benchmark-fp",
+		Name:        "benchmark-client",
+		Role:        RoleUser,
+		CreatedAt:   time.Now(),
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		s.UpsertClient(client)
+	}
+}
+
+func BenchmarkGetClient(b *testing.B) {
+	s := New()
+	s.UpsertClient(Client{
+		Fingerprint: "benchmark-fp",
+		Name:        "benchmark-client",
+		Role:        RoleUser,
+		CreatedAt:   time.Now(),
+	})
+
+	b.ResetTimer()
+	for range b.N {
+		_, _ = s.GetClient("benchmark-fp")
+	}
+}
+
+func BenchmarkListClients(b *testing.B) {
+	s := New()
+	for i := range 100 {
+		s.UpsertClient(Client{
+			Fingerprint: "fp-" + leftPadInt(i, 3),
+			Name:        "client-" + leftPadInt(i, 3),
+			Role:        RoleUser,
+			CreatedAt:   time.Now(),
+		})
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		_ = s.ListClients()
+	}
+}
+
+func BenchmarkMatchFeature(b *testing.B) {
+	f := Feature{
+		ID:      "FT-000123",
+		Name:    "Enable Dark Mode Toggle",
+		Summary: "Allow users to switch between light and dark themes",
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		_ = matchFeature(f, "dark")
+	}
+}
+
+func BenchmarkFingerprintSHA256(b *testing.B) {
+	cert := &x509.Certificate{
+		Raw: []byte("benchmark certificate data for fingerprinting"),
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		_ = FingerprintSHA256(cert)
+	}
+}
+
+func BenchmarkLeftPadInt(b *testing.B) {
+	for range b.N {
+		_ = leftPadInt(12345, 6)
+	}
+}
+
+func BenchmarkSeedFeatures(b *testing.B) {
+	s := New()
+
+	b.ResetTimer()
+	for range b.N {
+		s.SeedFeatures(200)
+	}
+}
