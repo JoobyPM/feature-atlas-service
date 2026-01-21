@@ -238,7 +238,7 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 
 		cert, err := parseCertPEM(req.CertPEM)
 		if err != nil {
-			http.Error(w, "invalid cert_pem: "+err.Error(), http.StatusBadRequest)
+			http.Error(w, "invalid cert_pem", http.StatusBadRequest)
 			return
 		}
 

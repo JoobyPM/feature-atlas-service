@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
-	"errors"
 	"sort"
 	"strconv"
 	"strings"
@@ -221,6 +220,3 @@ func toTitle(s string) string {
 	}
 	return strings.Join(words, " ")
 }
-
-// ErrNotFound is returned when a requested item does not exist.
-var ErrNotFound = errors.New("not found")

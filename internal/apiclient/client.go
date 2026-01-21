@@ -89,7 +89,7 @@ func New(baseURL, caFile, certFile, keyFile string) (*Client, error) {
 func (c *Client) Me(ctx context.Context) (*ClientInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/api/v1/me", nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
 	resp, err := c.HTTP.Do(req)
@@ -114,7 +114,7 @@ func (c *Client) Me(ctx context.Context) (*ClientInfo, error) {
 func (c *Client) Suggest(ctx context.Context, query string, limit int) ([]SuggestItem, error) {
 	u, err := url.Parse(c.BaseURL + "/api/v1/suggest")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse URL: %w", err)
 	}
 
 	q := u.Query()
@@ -124,7 +124,7 @@ func (c *Client) Suggest(ctx context.Context, query string, limit int) ([]Sugges
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
 	resp, err := c.HTTP.Do(req)
@@ -152,7 +152,7 @@ func (c *Client) Suggest(ctx context.Context, query string, limit int) ([]Sugges
 func (c *Client) Search(ctx context.Context, query string, limit int) ([]Feature, error) {
 	u, err := url.Parse(c.BaseURL + "/api/v1/features")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse URL: %w", err)
 	}
 
 	q := u.Query()
@@ -162,7 +162,7 @@ func (c *Client) Search(ctx context.Context, query string, limit int) ([]Feature
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
 	resp, err := c.HTTP.Do(req)
@@ -191,7 +191,7 @@ func (c *Client) Search(ctx context.Context, query string, limit int) ([]Feature
 func (c *Client) GetFeature(ctx context.Context, id string) (*Feature, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/api/v1/features/"+id, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
 	resp, err := c.HTTP.Do(req)
@@ -245,7 +245,7 @@ func (c *Client) CreateFeature(ctx context.Context, req CreateFeatureRequest) (*
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/admin/v1/features", bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.ContentLength = int64(len(body))
