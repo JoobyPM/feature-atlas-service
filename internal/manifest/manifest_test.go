@@ -68,25 +68,29 @@ func TestValidateServerID(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		id   string
-		want bool
+		id      string
+		wantErr bool
 	}{
-		{"FT-000000", true},
-		{"FT-000123", true},
-		{"FT-999999", true},
-		{"FT-00000", false},   // 5 digits
-		{"FT-0000000", false}, // 7 digits
-		{"FT-LOCAL-x", false},
-		{"FT-ABCDEF", false},
-		{"", false},
+		{"FT-000000", false},
+		{"FT-000123", false},
+		{"FT-999999", false},
+		{"FT-00000", true},   // 5 digits
+		{"FT-0000000", true}, // 7 digits
+		{"FT-LOCAL-x", true},
+		{"FT-ABCDEF", true},
+		{"", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.id, func(t *testing.T) {
 			t.Parallel()
-			got := ValidateServerID(tt.id)
-			if got != tt.want {
-				t.Errorf("ValidateServerID(%q) = %v, want %v", tt.id, got, tt.want)
+			err := ValidateServerID(tt.id)
+			gotErr := err != nil
+			if gotErr != tt.wantErr {
+				t.Errorf("ValidateServerID(%q) error = %v, wantErr %v", tt.id, err, tt.wantErr)
+			}
+			if tt.wantErr && err != nil && !errors.Is(err, ErrInvalidID) {
+				t.Errorf("ValidateServerID(%q) error should wrap ErrInvalidID", tt.id)
 			}
 		})
 	}

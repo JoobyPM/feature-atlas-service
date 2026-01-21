@@ -10,13 +10,13 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
 	"github.com/JoobyPM/feature-atlas-service/internal/apiclient"
 	"github.com/JoobyPM/feature-atlas-service/internal/manifest"
+	"github.com/JoobyPM/feature-atlas-service/internal/stringutil"
 	"github.com/JoobyPM/feature-atlas-service/internal/tui"
 )
 
@@ -179,7 +179,7 @@ var searchCmd = &cobra.Command{
 		default:
 			for _, f := range features {
 				fmt.Printf("%s  %s\n", f.ID, f.Name)
-				fmt.Printf("    %s\n", truncate(f.Summary, 70))
+				fmt.Printf("    %s\n", stringutil.Truncate(f.Summary, 70))
 				fmt.Println()
 			}
 		}
@@ -449,7 +449,7 @@ var manifestListCmd = &cobra.Command{
 				}
 				fmt.Printf("  %s  %s  %s\n", id, entry.Name, status)
 				if entry.Summary != "" {
-					fmt.Printf("      %s\n", truncate(entry.Summary, 60))
+					fmt.Printf("      %s\n", stringutil.Truncate(entry.Summary, 60))
 				}
 			}
 			fmt.Printf("\nTotal: %d feature(s)\n", len(ids))
@@ -474,8 +474,8 @@ Requires mTLS connection to the server.`,
 		targetID := args[0]
 
 		// Validate server ID format
-		if !manifest.ValidateServerID(targetID) {
-			fmt.Fprintf(os.Stderr, "Error: invalid server feature ID format: %s\n", targetID)
+		if err := manifest.ValidateServerID(targetID); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			fmt.Fprintln(os.Stderr, "Server IDs must match format: FT-NNNNNN (e.g., FT-000123)")
 			return exitErr(exitValidation, "invalid server ID format")
 		}
@@ -798,18 +798,4 @@ func init() {
 	rootCmd.AddCommand(lintCmd)
 	rootCmd.AddCommand(manifestCmd)
 	rootCmd.AddCommand(featureCmd)
-}
-
-// truncate shortens a string to maxLen runes with ellipsis.
-// Uses rune count for proper UTF-8 handling.
-// If maxLen < 4, returns the string unchanged (no room for ellipsis).
-func truncate(s string, maxLen int) string {
-	if maxLen < 4 {
-		return s
-	}
-	if utf8.RuneCountInString(s) <= maxLen {
-		return s
-	}
-	runes := []rune(s)
-	return string(runes[:maxLen-3]) + "..."
 }

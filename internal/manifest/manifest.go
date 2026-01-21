@@ -80,8 +80,11 @@ func ValidateLocalID(id string) error {
 
 // ValidateServerID checks if an ID matches the server feature ID format.
 // Format: FT-NNNNNN (6 digits).
-func ValidateServerID(id string) bool {
-	return serverIDRegex.MatchString(id)
+func ValidateServerID(id string) error {
+	if !serverIDRegex.MatchString(id) {
+		return fmt.Errorf("%w: must match FT-NNNNNN (6 digits)", ErrInvalidID)
+	}
+	return nil
 }
 
 // IsLocalID returns true if the ID is a local (unsynced) feature ID.

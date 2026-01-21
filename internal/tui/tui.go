@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -15,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/JoobyPM/feature-atlas-service/internal/apiclient"
+	"github.com/JoobyPM/feature-atlas-service/internal/stringutil"
 )
 
 const (
@@ -53,22 +53,8 @@ type suggestionItem struct {
 }
 
 func (i suggestionItem) Title() string       { return fmt.Sprintf("%s - %s", i.id, i.name) }
-func (i suggestionItem) Description() string { return truncate(i.summary, 60) }
+func (i suggestionItem) Description() string { return stringutil.Truncate(i.summary, 60) }
 func (i suggestionItem) FilterValue() string { return i.id + " " + i.name }
-
-// truncate shortens a string to maxLen runes with ellipsis.
-// Uses rune count for proper UTF-8 handling.
-// If maxLen < 4, returns the string unchanged (no room for ellipsis).
-func truncate(s string, maxLen int) string {
-	if maxLen < 4 {
-		return s
-	}
-	if utf8.RuneCountInString(s) <= maxLen {
-		return s
-	}
-	runes := []rune(s)
-	return string(runes[:maxLen-3]) + "..."
-}
 
 // State represents the current UI state.
 type State int
