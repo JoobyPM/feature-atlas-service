@@ -49,6 +49,7 @@ var (
 	manifestForce    bool
 	manifestOutput   string
 	manifestUnsynced bool
+	manifestDryRun   bool
 
 	// Feature create flags
 	featureID      string
@@ -390,6 +391,183 @@ var manifestListCmd = &cobra.Command{
 	},
 }
 
+var manifestAddCmd = &cobra.Command{
+	Use:   "add <feature-id>",
+	Short: "Add a server feature to the local manifest",
+	Long: `Fetch a feature from the server by ID and add it to the local manifest.
+This allows offline validation of existing server features.
+
+Requires mTLS connection to the server.`,
+	Args: cobra.ExactArgs(1),
+	PreRunE: func(_ *cobra.Command, _ []string) error {
+		return initClient()
+	},
+	RunE: func(_ *cobra.Command, args []string) error {
+		targetID := args[0]
+
+		// Find manifest
+		path, err := manifest.Discover(manifestPath)
+		if err != nil {
+			if errors.Is(err, manifest.ErrManifestNotFound) {
+				fmt.Fprintln(os.Stderr, "Error: manifest not found")
+				fmt.Fprintln(os.Stderr, "Run 'featctl manifest init' first")
+				os.Exit(exitValidationError)
+			}
+			return err
+		}
+
+		// Load manifest
+		m, err := manifest.Load(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(exitWriteError)
+		}
+
+		// Check if already in manifest
+		if m.HasFeature(targetID) {
+			fmt.Printf("Feature %s already in manifest (skipped)\n", targetID)
+			return nil
+		}
+
+		// Fetch from server
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		feature, err := client.GetFeature(ctx, targetID)
+		if err != nil {
+			if errors.Is(err, apiclient.ErrFeatureNotFound) {
+				fmt.Fprintf(os.Stderr, "Error: feature not found on server: %s\n", targetID)
+				os.Exit(exitValidationError)
+			}
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(exitIDExists) // Exit 2 for network error
+		}
+
+		// Add to manifest with synced status
+		m.Features[feature.ID] = manifest.Entry{
+			Name:     feature.Name,
+			Summary:  feature.Summary,
+			Owner:    feature.Owner,
+			Tags:     feature.Tags,
+			Synced:   true,
+			SyncedAt: time.Now().Format(time.RFC3339),
+		}
+
+		// Save
+		if err := m.SaveWithLock(path); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: failed to save manifest: %v\n", err)
+			os.Exit(exitWriteError)
+		}
+
+		fmt.Printf("✓ Added %s (%s) to %s\n", feature.ID, feature.Name, path)
+		return nil
+	},
+}
+
+var manifestSyncCmd = &cobra.Command{
+	Use:   "sync",
+	Short: "Sync unsynced local features to the server",
+	Long: `Push all unsynced local features (FT-LOCAL-*) to the server.
+The server assigns canonical IDs (FT-NNNNNN) and the manifest is updated.
+
+Requires admin mTLS certificate.`,
+	PreRunE: func(_ *cobra.Command, _ []string) error {
+		return initClient()
+	},
+	RunE: func(_ *cobra.Command, _ []string) error {
+		// Find manifest
+		path, err := manifest.Discover(manifestPath)
+		if err != nil {
+			if errors.Is(err, manifest.ErrManifestNotFound) {
+				fmt.Fprintln(os.Stderr, "Error: manifest not found")
+				fmt.Fprintln(os.Stderr, "Run 'featctl manifest init' first")
+				os.Exit(exitValidationError)
+			}
+			return err
+		}
+
+		// Load manifest
+		m, err := manifest.Load(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(exitWriteError)
+		}
+
+		// Find unsynced features
+		unsynced := m.ListFeatures(true)
+		if len(unsynced) == 0 {
+			fmt.Println("No unsynced features to sync")
+			return nil
+		}
+
+		// Sort for deterministic order
+		ids := make([]string, 0, len(unsynced))
+		for id := range unsynced {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+
+		if manifestDryRun {
+			fmt.Printf("Would sync %d feature(s):\n", len(ids))
+			for _, id := range ids {
+				entry := unsynced[id]
+				fmt.Printf("  %s  %s\n", id, entry.Name)
+			}
+			return nil
+		}
+
+		fmt.Printf("Syncing %d feature(s) to server...\n", len(ids))
+
+		var synced, failed int
+		for _, localID := range ids {
+			entry := unsynced[localID]
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			feature, err := client.CreateFeature(ctx, apiclient.CreateFeatureRequest{
+				Name:    entry.Name,
+				Summary: entry.Summary,
+				Owner:   entry.Owner,
+				Tags:    entry.Tags,
+			})
+			cancel()
+
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  ✗ %s: %v\n", localID, err)
+				failed++
+				continue
+			}
+
+			// Update manifest: remove old ID, add new with alias
+			delete(m.Features, localID)
+			m.Features[feature.ID] = manifest.Entry{
+				Name:     feature.Name,
+				Summary:  feature.Summary,
+				Owner:    feature.Owner,
+				Tags:     feature.Tags,
+				Synced:   true,
+				SyncedAt: time.Now().Format(time.RFC3339),
+				Alias:    localID,
+			}
+
+			fmt.Printf("  ✓ %s → %s (%s)\n", localID, feature.ID, feature.Name)
+			synced++
+		}
+
+		// Save manifest
+		if err := m.SaveWithLock(path); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: failed to save manifest: %v\n", err)
+			os.Exit(exitWriteError)
+		}
+
+		fmt.Printf("\nSynced: %d, Failed: %d\n", synced, failed)
+
+		if failed > 0 {
+			os.Exit(exitValidationError) // Partial failure
+		}
+		return nil
+	},
+}
+
 // featureCmd is the parent command for feature operations.
 var featureCmd = &cobra.Command{
 	Use:   "feature",
@@ -509,6 +687,13 @@ func init() {
 	manifestListCmd.Flags().StringVarP(&manifestOutput, "output", "o", "text", "Output format (text, json, yaml)")
 	manifestListCmd.Flags().BoolVar(&manifestUnsynced, "unsynced", false, "Show only unsynced features")
 
+	// Manifest add flags
+	manifestAddCmd.Flags().StringVar(&manifestPath, "manifest", "", "Custom manifest path")
+
+	// Manifest sync flags
+	manifestSyncCmd.Flags().StringVar(&manifestPath, "manifest", "", "Custom manifest path")
+	manifestSyncCmd.Flags().BoolVar(&manifestDryRun, "dry-run", false, "Show what would be synced without changes")
+
 	// Feature create flags
 	featureCreateCmd.Flags().StringVar(&manifestPath, "manifest", "", "Custom manifest path")
 	featureCreateCmd.Flags().StringVar(&featureID, "id", "", "Feature ID (required, must start with FT-LOCAL-)")
@@ -520,6 +705,8 @@ func init() {
 	// Build command tree
 	manifestCmd.AddCommand(manifestInitCmd)
 	manifestCmd.AddCommand(manifestListCmd)
+	manifestCmd.AddCommand(manifestAddCmd)
+	manifestCmd.AddCommand(manifestSyncCmd)
 	featureCmd.AddCommand(featureCreateCmd)
 
 	// Add commands to root
