@@ -1,0 +1,38 @@
+services:
+  feature-atlas:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: feature-atlas-service
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./certs:/app/certs:ro
+    environment:
+      - SEED_COUNT=200
+    command:
+      - "-listen"
+      - ":8443"
+      - "-tls-cert"
+      - "/app/certs/server.crt"
+      - "-tls-key"
+      - "/app/certs/server.key"
+      - "-client-ca"
+      - "/app/certs/ca.crt"
+      - "-admin-cert"
+      - "/app/certs/admin.crt"
+      - "-seed"
+      - "200"
+    healthcheck:
+      test: ["CMD", "wget", "--no-check-certificate", "--spider", "https://localhost:8443/api/v1/features?limit=1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - feature-atlas-net
+
+networks:
+  feature-atlas-net:
+    driver: bridge
