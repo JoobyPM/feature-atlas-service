@@ -126,6 +126,33 @@ func (s *Store) GetFeature(id string) (Feature, bool) {
 	return f, ok
 }
 
+// CreateFeature adds a new feature with a server-assigned ID.
+// Returns the created feature with the assigned ID.
+func (s *Store) CreateFeature(name, summary, owner string, tags []string) Feature {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Find next available ID
+	nextNum := len(s.features) + 1
+	for {
+		id := "FT-" + leftPadInt(nextNum, 6)
+		if _, exists := s.features[id]; !exists {
+			f := Feature{
+				ID:        id,
+				Name:      name,
+				Summary:   summary,
+				Owner:     owner,
+				Tags:      tags,
+				CreatedAt: time.Now(),
+			}
+			s.features[id] = f
+			s.featureIDs = append(s.featureIDs, id)
+			return f
+		}
+		nextNum++
+	}
+}
+
 // SearchFeatures performs a case-insensitive search across feature fields.
 func (s *Store) SearchFeatures(query string, limit int) []Feature {
 	if limit <= 0 {
