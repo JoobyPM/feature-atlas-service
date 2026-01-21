@@ -299,9 +299,9 @@ features:
 - [x] `featctl manifest sync` command
 - [ ] Integration tests for sync workflow
 
-### Phase 3: Lint Integration
-- [ ] Modify `lint` to check manifest first
-- [ ] Add `--offline` and `--manifest` flags to `lint`
+### Phase 3: Lint Integration ✅
+- [x] Modify `lint` to check manifest first
+- [x] Add `--offline` and `--manifest` flags to `lint`
 - [ ] E2E tests for offline lint workflow
 
 ## Testing Strategy
