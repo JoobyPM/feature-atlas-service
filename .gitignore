@@ -35,3 +35,6 @@ certs/
 # Temporary files
 *.tmp
 *.log
+
+# Feature Atlas cache (local validation hints)
+.fas/

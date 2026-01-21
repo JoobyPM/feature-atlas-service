@@ -24,12 +24,13 @@ Enhance `featctl tui` to support multi-feature selection with manifest integrati
 
 | Key | Action |
 |-----|--------|
-| `↑/↓` or `j/k` | Navigate list |
+| `↑/↓` | Navigate list |
 | `Space` | Toggle selection on current item |
 | `Enter` | Confirm selection and proceed |
-| `a` | Select all visible |
-| `n` | Deselect all |
-| `Esc` or `q` | Cancel and exit |
+| `Ctrl+A` | Select all visible |
+| `Ctrl+N` | Deselect all |
+| `Esc` | Clear search or quit |
+| Any letter | Type in search (including j, k, q) |
 
 ### R2: Visual Indicators
 
@@ -42,7 +43,7 @@ Enhance `featctl tui` to support multi-feature selection with manifest integrati
 │ [✓] FT-000003  OAuth Provider     [on server]        │
 │ [ ] FT-LOCAL-x Local Feature      [local only]       │
 ├──────────────────────────────────────────────────────┤
-│ Selected: 2 │ Space: toggle │ Enter: add │ q: quit  │
+│ Selected: 2 │ Space: toggle │ Enter: add │ q: quit   │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -105,12 +106,12 @@ featctl tui --manifest path # Custom manifest location
 
 ## Acceptance Criteria
 
-1. [ ] Space toggles feature selection
-2. [ ] Enter opens confirmation dialog
-3. [ ] `[in manifest]` / `[on server]` status shown
-4. [ ] Confirmation shows feature list before changes
-5. [ ] `--sync` flag syncs after manifest update
-6. [ ] No regressions in single-select behavior (Enter on unselected = select + exit)
+1. [x] Space toggles feature selection
+2. [x] Enter opens confirmation dialog
+3. [x] `[in manifest]` / `[on server]` status shown
+4. [x] Confirmation shows feature list before changes
+5. [x] `--sync` flag syncs after manifest update
+6. [x] No regressions in single-select behavior (Enter on unselected = select + exit)
 
 ## Testing
 
