@@ -40,30 +40,52 @@ Currently, `featctl` requires a live connection to the server for all operations
 
 ### Manifest File
 
-**Location**: `.feature-atlas.yaml` in project root (configurable via `--manifest` flag)
+**Location Discovery** (in order):
+1. `--manifest` flag value (if provided)
+2. `.feature-atlas.yaml` in current working directory
+3. Walk up directory tree to git root (`.git` directory), checking each level
+4. Stop at filesystem root; fail if not found
 
-**Structure**:
-- `version`: Manifest schema version
-- `features`: Map of feature ID to feature data
-- `metadata`: Sync timestamps, source info
+**File Format**: YAML (consistent with existing `.golangci.yml`, `lint` output)
 
-**Feature Entry Fields**:
-- `id`: Feature identifier
-- `name`: Human-readable name
-- `summary`: Brief description
-- `owner`: Responsible team/person
-- `tags`: Categorization labels
-- `synced`: Boolean indicating server sync status
-- `synced_at`: Timestamp of last sync (if synced)
+**Schema Version**: `1` (stable; future changes require explicit `featctl manifest migrate`)
+
+### Data Types
+
+**ManifestEntry** (wraps `store.Feature` with sync metadata):
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | yes | Feature identifier |
+| `name` | string | yes | Human-readable name |
+| `summary` | string | yes | Brief description |
+| `owner` | string | no | Responsible team/person |
+| `tags` | []string | no | Categorization labels |
+| `synced` | bool | yes | Server sync status |
+| `synced_at` | RFC3339 | if synced | Timestamp of last sync |
+| `alias` | string | no | Original local ID (after sync renames) |
+
+Note: `created_at` from `store.Feature` is server-assigned; omitted in manifest.
 
 ### ID Convention
 
-| Source | Format | Example |
-|--------|--------|---------|
-| Server | `FT-NNNNNN` | `FT-000123` |
-| Local (unsynced) | `FT-LOCAL-*` | `FT-LOCAL-auth-flow` |
+| Source | Format | Regex | Example |
+|--------|--------|-------|---------|
+| Server | `FT-NNNNNN` | `^FT-[0-9]{6}$` | `FT-000123` |
+| Local | `FT-LOCAL-*` | `^FT-LOCAL-[a-z0-9-]{1,64}$` | `FT-LOCAL-auth-flow` |
 
-Local IDs are user-specified with `FT-LOCAL-` prefix. Upon sync, server assigns canonical ID.
+**Local ID Rules**:
+- Prefix: `FT-LOCAL-` (required, case-sensitive)
+- Suffix: lowercase letters, digits, hyphens only
+- Length: 1-64 characters after prefix
+- No leading/trailing hyphens in suffix
+
+### Concurrency
+
+**File Locking**: Advisory lock using OS-level `flock()` during manifest writes.
+- Lock file: manifest path (lock on file descriptor, not separate `.lock` file)
+- Timeout: 5 seconds; fail with "manifest locked by another process"
+- Read operations do not acquire lock (snapshot consistency acceptable)
 
 ### CLI Commands
 
@@ -75,21 +97,11 @@ Create empty manifest in current directory.
 - `--force`: Overwrite existing manifest
 
 **Behavior**:
-- Creates `.feature-atlas.yaml` with empty features map
+- Creates `.feature-atlas.yaml` with `version: "1"` and empty `features` map
 - Fails if manifest exists (unless `--force`)
+- Does not acquire lock (atomic write via temp file + rename)
 
-#### `featctl manifest add <id>`
-
-Add existing server feature to local manifest.
-
-**Flags**:
-- `--manifest`: Custom manifest path
-
-**Behavior**:
-- Fetches feature from server by ID
-- Adds to local manifest with `synced: true`
-- Fails if feature not found on server
-- Skips if already in manifest (idempotent)
+**Exit Codes**: 0 success, 1 already exists, 2 write error
 
 #### `featctl manifest list`
 
@@ -97,27 +109,14 @@ List features in local manifest.
 
 **Flags**:
 - `--manifest`: Custom manifest path
-- `--output`: Format (text, json, yaml)
+- `--output`: Format (`text`, `json`, `yaml`); default `text`
 - `--unsynced`: Show only unsynced features
 
 **Behavior**:
 - Reads manifest and displays features
-- Shows sync status indicator
+- Text output shows sync status indicator: `[synced]` or `[local]`
 
-#### `featctl manifest sync`
-
-Sync local features to server.
-
-**Flags**:
-- `--manifest`: Custom manifest path
-- `--dry-run`: Show what would be synced without changes
-
-**Behavior**:
-- Requires admin client certificate
-- Iterates unsynced features
-- Creates each on server (server assigns canonical ID)
-- Updates manifest with server ID and `synced: true`
-- Preserves `FT-LOCAL-*` as alias in manifest comments
+**Exit Codes**: 0 success, 1 manifest not found, 2 parse error
 
 #### `featctl feature create`
 
@@ -125,34 +124,74 @@ Create new feature in local manifest.
 
 **Flags**:
 - `--manifest`: Custom manifest path
-- `--id`: Local ID (required, must start with `FT-LOCAL-`)
+- `--id`: Local ID (required, must match `^FT-LOCAL-[a-z0-9-]{1,64}$`)
 - `--name`: Feature name (required)
 - `--summary`: Feature summary (required)
-- `--owner`: Feature owner
-- `--tags`: Comma-separated tags
-- `--sync`: Immediately sync to server
+- `--owner`: Feature owner (optional)
+- `--tags`: Comma-separated tags (optional)
 
 **Behavior**:
-- Validates ID format (`FT-LOCAL-*`)
-- Adds feature to manifest with `synced: false`
-- If `--sync`, calls server API and updates manifest
+- Validates ID format strictly
+- Fails if ID already exists in manifest
+- Adds feature with `synced: false`
+- Acquires file lock during write
+
+**Exit Codes**: 0 success, 1 validation error, 2 ID exists, 3 write error
+
+#### `featctl manifest add <id>` *(Phase 2)*
+
+Add existing server feature to local manifest.
+
+**Flags**:
+- `--manifest`: Custom manifest path
+
+**Behavior**:
+- Fetches feature from server by ID (requires mTLS)
+- Adds to manifest with `synced: true`, `synced_at: <now>`
+- Idempotent: skips if ID already in manifest
+
+**Exit Codes**: 0 success, 1 not found on server, 2 network error, 3 write error
+
+#### `featctl manifest sync` *(Phase 2)*
+
+Sync unsynced local features to server.
+
+**Flags**:
+- `--manifest`: Custom manifest path
+- `--dry-run`: Show what would be synced without changes
+
+**Behavior**:
+- Requires admin client certificate
+- For each unsynced feature:
+  1. POST to `/admin/v1/features`
+  2. Server assigns canonical `FT-NNNNNN` ID
+  3. Update manifest: new ID, `synced: true`, `synced_at: <now>`
+  4. Preserve original ID in `alias` field
+- Atomic per-feature: partial sync on error; re-run continues
+
+**Exit Codes**: 0 all synced, 1 partial failure (some synced), 2 auth error, 3 network error
 
 ### Modified Commands
 
-#### `featctl lint`
+#### `featctl lint` *(Phase 3)*
 
 **Current**: Validates `feature_id` against server only.
 
 **New**: Validates against local manifest first, falls back to server.
 
 **Resolution Order**:
-1. Check local manifest (if exists)
-2. If not found locally, check server
-3. Report error if not found in either
+1. Load manifest (if exists and readable)
+2. For each `feature_id` in target files:
+   - Check manifest → return valid if found
+   - Check server → return valid if found
+   - Report error if not found in either
+3. If manifest missing/unreadable: server-only (current behavior)
 
 **New Flags**:
 - `--manifest`: Custom manifest path
-- `--offline`: Only check local manifest (fail if not found locally)
+- `--offline`: Only check manifest; fail if ID not found locally
+
+**Exit Codes**: 0 all valid, 1 validation errors, 2 manifest parse error (with `--offline`)
 
 ### Manifest Schema
 
@@ -163,91 +202,138 @@ features:
     name: "User Authentication"
     summary: "OAuth2 and JWT-based authentication flow"
     owner: "Platform Team"
-    tags: ["auth", "security"]
+    tags:
+      - auth
+      - security
     synced: true
     synced_at: "2026-01-21T10:00:00Z"
-  FT-LOCAL-billing-v2:
+  FT-000456:
     name: "Billing V2"
     summary: "New subscription billing system"
     owner: "Payments Team"
-    tags: ["billing", "payments"]
+    tags:
+      - billing
+      - payments
+    synced: true
+    synced_at: "2026-01-21T11:30:00Z"
+    alias: "FT-LOCAL-billing-v2"
+  FT-LOCAL-new-dashboard:
+    name: "Analytics Dashboard"
+    summary: "Real-time metrics visualization"
+    owner: "Data Team"
+    tags:
+      - analytics
+      - frontend
     synced: false
 ```
 
-## API Changes
+## API Changes *(Phase 2)*
 
 ### New Admin Endpoint
 
-`POST /admin/v1/features` - Create new feature on server
+`POST /admin/v1/features`
 
-**Request**:
-- `name`: string (required)
-- `summary`: string (required)
-- `owner`: string
-- `tags`: string array
+**Authorization**: Admin role required (same as `/admin/v1/clients`)
 
-**Response**:
-- `id`: Server-assigned ID
-- Full feature object
+**Request Body**:
+```json
+{
+  "name": "Feature Name",
+  "summary": "Feature description",
+  "owner": "Team Name",
+  "tags": ["tag1", "tag2"]
+}
+```
 
-This endpoint enables `manifest sync` to create features without direct DB access.
+**Response** (201 Created):
+```json
+{
+  "id": "FT-000789",
+  "name": "Feature Name",
+  "summary": "Feature description",
+  "owner": "Team Name",
+  "tags": ["tag1", "tag2"],
+  "created_at": "2026-01-21T12:00:00Z"
+}
+```
+
+**Errors**:
+- 400: Missing required fields (name, summary)
+- 401: No client certificate
+- 403: Not admin role
+- 409: Duplicate name (if enforced)
 
 ## Edge Cases
 
 | Scenario | Behavior |
 |----------|----------|
-| Manifest doesn't exist | Commands that require it fail with clear error |
-| Feature ID collision (local vs server) | `FT-LOCAL-*` prefix prevents collision |
-| Sync fails mid-way | Partial sync; re-run continues from unsynced |
-| Server unreachable during sync | Fail with error; manifest unchanged |
-| Manifest has invalid YAML | Fail with parse error and line number |
-| `lint --offline` with no manifest | Fail with "no manifest found" error |
+| Manifest not found | Commands requiring it fail with exit 1 and clear message |
+| Manifest empty (no features) | Valid state; lint falls back to server |
+| Invalid YAML | Fail with parse error, line number, column |
+| ID format invalid | Reject with specific format requirements |
+| ID collision local vs server | Impossible by design (`FT-LOCAL-` prefix) |
+| Sync interrupted | Partial progress saved; re-run continues |
+| Concurrent writes | Second writer waits up to 5s, then fails |
+| Manifest in parent directory | Found via discovery; commands operate on it |
 
 ## Security Considerations
 
-- `manifest sync` requires admin certificate (same as `admin/v1/clients`)
-- Local manifest may contain sensitive feature names; add to `.gitignore` template
+- `manifest sync` requires admin certificate (enforced by server)
+- Manifest may contain sensitive feature names
+- Recommended: add `.feature-atlas.yaml` to `.gitignore` for private projects
 - No credentials stored in manifest
-
-## Success Metrics
-
-1. `lint` works offline with local manifest
-2. Feature creation → sync round-trip under 5 commands
-3. No breaking changes to existing `lint` behavior (server-only still works)
+- File permissions: created with 0644 (user read/write, others read)
 
 ## Implementation Phases
 
-### Phase 1: Core Manifest (This PR)
-- `manifest init`
-- `manifest list`
-- `feature create` (local only)
-- Manifest file read/write
+### Phase 1: Core Manifest
+- [ ] `internal/manifest` package (types, read/write, validation, locking)
+- [ ] `featctl manifest init` command
+- [ ] `featctl manifest list` command
+- [ ] `featctl feature create` command (local only, no `--sync`)
+- [ ] Unit tests for manifest package
 
 ### Phase 2: Server Integration
-- `manifest add`
-- `manifest sync`
-- `POST /admin/v1/features` endpoint
+- [ ] `POST /admin/v1/features` endpoint
+- [ ] `featctl manifest add` command
+- [ ] `featctl manifest sync` command
+- [ ] Integration tests for sync workflow
 
 ### Phase 3: Lint Integration
-- Modify `lint` to check local manifest first
-- Add `--offline` and `--manifest` flags
+- [ ] Modify `lint` to check manifest first
+- [ ] Add `--offline` and `--manifest` flags to `lint`
+- [ ] E2E tests for offline lint workflow
 
 ## Testing Strategy
 
-| Test Type | Coverage |
-|-----------|----------|
-| Unit | Manifest parsing, ID validation, feature CRUD |
-| Integration | CLI commands, file I/O, server sync |
-| E2E | Full workflow: init → create → sync → lint |
+| Test Type | Scope | Key Cases |
+|-----------|-------|-----------|
+| Unit | `internal/manifest` | Parse valid/invalid YAML, ID validation, locking |
+| Unit | Commands | Flag parsing, error messages, exit codes |
+| Integration | File I/O | Manifest discovery, concurrent access |
+| Integration | Server sync | Auth, feature creation, ID assignment |
+| E2E | Full workflow | init → create → sync → lint → verify |
 
-## Open Questions
+## Success Metrics
 
-1. Should `manifest add` support glob patterns (`FT-0001*`)?
-2. Should we support manifest includes for monorepos?
-3. Should sync preserve local ID as an alias field?
+1. `lint --offline` works without network (manifest-only validation)
+2. Feature create → sync round-trip: 3 commands (`init`, `create`, `sync`)
+3. No breaking changes to existing `lint` behavior (no manifest = server-only)
+4. File lock prevents corruption under concurrent access
+
+## Decisions Log
+
+| Issue | Decision | Rationale |
+|-------|----------|-----------|
+| ID format | `^FT-LOCAL-[a-z0-9-]{1,64}$` | Prevents collision, easy validation |
+| Manifest discovery | CWD → git root | Matches `.golangci.yml` pattern |
+| Sync ID preservation | `alias` field | Machine-readable, supports refactoring |
+| Concurrency | `flock()` on manifest | OS-level, no external deps |
+| Phase 1 scope | No `--sync` on create | Avoids Phase 2 API dependency |
 
 ## References
 
-- Existing `lint` command: `cmd/featctl/main.go:172`
-- Feature struct: `internal/store/store.go:36`
-- YAML library: `gopkg.in/yaml.v3`
+- `store.Feature` struct: `internal/store/store.go:36`
+- Existing lint command: `cmd/featctl/main.go`
+- YAML library: `gopkg.in/yaml.v3` (already in go.mod)
+- File locking: `golang.org/x/sys/unix.Flock` or `syscall.Flock`
