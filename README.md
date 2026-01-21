@@ -18,6 +18,8 @@ This provides strong authentication at the transport layer, before any applicati
 - **Certificate-based authorization**: Client fingerprint mapped to user/role
 - **Public API**: Search, suggest, and retrieve features
 - **Admin API**: Register clients, reseed feature catalog
+- **Interactive TUI**: Bubble Tea-based terminal UI with autocomplete
+- **Docker support**: Containerized deployment with docker-compose
 
 ## Quick Start
 
@@ -34,18 +36,45 @@ This creates a private CA and certificates for:
 
 ### 2. Run the Service
 
+**Option A: Run locally**
+
 ```bash
 make run
 ```
 
+**Option B: Run with Docker**
+
+```bash
+make docker-build
+make docker-run
+```
+
 The service starts on `https://localhost:8443` with mTLS enabled.
 
-### 3. Test with curl
+### 3. Use the CLI
+
+```bash
+# Build the CLI
+make build-cli
+
+# Show your identity
+./bin/featctl me
+
+# Search features
+./bin/featctl search "keyword"
+
+# Interactive TUI browser
+./bin/featctl tui
+
+# Validate a YAML file
+./bin/featctl lint my-feature.yaml
+```
+
+### 4. Test with curl
 
 Test as admin (bootstrapped automatically):
 
 ```bash
-# Get admin identity
 curl --cacert certs/ca.crt \
   --cert certs/admin.crt --key certs/admin.key \
   https://localhost:8443/api/v1/me
@@ -54,21 +83,32 @@ curl --cacert certs/ca.crt \
 Register alice as a user:
 
 ```bash
-CERT_PEM="$(cat certs/alice.crt | sed 's/$/\\n/' | tr -d '\n')"
-
 curl --cacert certs/ca.crt \
   --cert certs/admin.crt --key certs/admin.key \
   -H "Content-Type: application/json" \
-  -d "{\"name\":\"alice\",\"role\":\"user\",\"cert_pem\":\"${CERT_PEM}\"}" \
+  -d "{\"name\":\"alice\",\"role\":\"user\",\"cert_pem\":\"$(awk '{printf "%s\\n", $0}' certs/alice.crt)\"}" \
   https://localhost:8443/admin/v1/clients
 ```
 
-Test as alice:
+## CLI Reference
+
+The `featctl` CLI uses mTLS to communicate with the service.
 
 ```bash
-curl --cacert certs/ca.crt \
-  --cert certs/alice.crt --key certs/alice.key \
-  https://localhost:8443/api/v1/me
+featctl [command] [flags]
+
+Commands:
+  me        Show authenticated client information
+  search    Search features in the catalog
+  get       Get a feature by ID
+  tui       Interactive terminal UI for browsing features
+  lint      Validate a YAML file against the feature catalog
+
+Global Flags:
+  --server  Server URL (default: https://localhost:8443)
+  --ca      CA certificate file (default: certs/ca.crt)
+  --cert    Client certificate file (default: certs/alice.crt)
+  --key     Client private key file (default: certs/alice.key)
 ```
 
 ## API Reference
@@ -90,14 +130,39 @@ curl --cacert certs/ca.crt \
 | POST | `/admin/v1/clients` | Register a new client |
 | POST | `/admin/v1/features/seed?count=<n>` | Reseed feature catalog |
 
-### Register Client Request
+## Docker Deployment
 
-```json
-{
-  "name": "alice",
-  "role": "user",
-  "cert_pem": "-----BEGIN CERTIFICATE-----\n..."
-}
+### Build and Run
+
+```bash
+# Generate certificates first
+make certs
+
+# Build Docker image
+make docker-build
+
+# Start with docker-compose
+make docker-run
+
+# View logs
+make docker-logs
+
+# Stop
+make docker-stop
+```
+
+### Docker Compose Configuration
+
+The service mounts certificates from `./certs` and exposes port 8443:
+
+```yaml
+services:
+  feature-atlas:
+    build: .
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./certs:/app/certs:ro
 ```
 
 ## Architecture
@@ -132,63 +197,41 @@ curl --cacert certs/ca.crt \
 4. **Authorization**: Fingerprint looked up in the in-memory client database
 5. **Role Check**: Admin endpoints additionally verify the client has `admin` role
 
-## Testing mTLS
-
-Try these scenarios to understand mTLS:
-
-| Scenario | Expected Result |
-|----------|-----------------|
-| No client cert | TLS handshake fails |
-| Cert signed by wrong CA | TLS handshake fails |
-| Valid cert, not registered | 403 Forbidden |
-| Registered user cert | Success |
-| User cert on admin endpoint | 403 Forbidden |
-| Admin cert on admin endpoint | Success |
-
-```bash
-# No client cert - should fail
-curl --cacert certs/ca.crt https://localhost:8443/api/v1/me
-# Error: SSL peer certificate or SSH remote key was not OK
-
-# Self-signed cert - should fail
-curl --cacert certs/ca.crt \
-  --cert /some/other/cert.crt --key /some/other/key.key \
-  https://localhost:8443/api/v1/me
-# Error: TLS handshake failure
-```
-
 ## Project Structure
 
 ```
 feature-atlas-service/
 ├── cmd/
-│   └── feature-atlasd/
-│       └── main.go          # Entry point
+│   ├── feature-atlasd/     # Service entry point
+│   └── featctl/            # CLI entry point
 ├── internal/
-│   ├── store/
-│   │   └── store.go         # In-memory data store
-│   └── httpapi/
-│       ├── handlers.go      # HTTP handlers
-│       └── middleware.go    # mTLS middleware
+│   ├── store/              # In-memory data store
+│   ├── httpapi/            # HTTP handlers + middleware
+│   ├── apiclient/          # mTLS HTTP client
+│   └── tui/                # Bubble Tea TUI
 ├── scripts/
-│   └── gen-certs.sh         # Certificate generation
-├── certs/                   # Generated certificates (gitignored)
+│   └── gen-certs.sh        # Certificate generation
+├── certs/                  # Generated certificates (gitignored)
+├── Dockerfile
+├── docker-compose.yml
 ├── Makefile
-├── go.mod
 └── README.md
 ```
 
 ## Development
 
 ```bash
-# Format and lint
-make fmt check
+# Format code (gofumpt + gci)
+make fmt
 
-# Build
-make build
+# Run linter (golangci-lint v2)
+make lint
 
-# Run tests
-make test
+# Build all
+make build-all
+
+# Run tests with coverage
+make test-cover
 
 # Clean
 make clean
@@ -196,22 +239,31 @@ make clean
 
 ## Configuration
 
-Command-line flags:
+Command-line flags for `feature-atlasd`:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-listen` | `:8443` | Listen address |
+| `-listen` | `:8443` | HTTPS listen address (mTLS required) |
+| `-health-port` | `:8080` | HTTP health check port (no auth) |
 | `-tls-cert` | `certs/server.crt` | Server certificate |
 | `-tls-key` | `certs/server.key` | Server private key |
 | `-client-ca` | `certs/ca.crt` | CA for verifying client certs |
 | `-admin-cert` | `certs/admin.crt` | Admin cert (bootstrapped at startup) |
 | `-seed` | `200` | Number of features to seed |
 
+### Health Endpoints (No Auth Required)
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /healthz` | Liveness probe - returns `{"status": "ok"}` |
+| `GET /readyz` | Readiness probe - includes feature count check |
+
 ## Related
 
-- **feature-atlas-cli**: CLI tool that uses this service with mTLS
 - [Cloudflare: What is mTLS?](https://www.cloudflare.com/learning/access-management/what-is-mutual-tls/)
 - [Go crypto/tls package](https://pkg.go.dev/crypto/tls)
+- [Bubble Tea](https://github.com/charmbracelet/bubbletea) - Terminal UI framework
+- [Cobra](https://github.com/spf13/cobra) - CLI framework
 
 ## License
 

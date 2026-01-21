@@ -18,6 +18,7 @@ import (
 // Role represents the authorization level of a client.
 type Role string
 
+// Role constants define the authorization levels.
 const (
 	RoleUser  Role = "user"
 	RoleAdmin Role = "admin"
@@ -92,6 +93,7 @@ func (s *Store) ListClients() []Client {
 
 // SeedFeatures populates the store with fake feature data.
 func (s *Store) SeedFeatures(count int) {
+	//nolint:errcheck // gofakeit.Seed error is not critical for seeding
 	gofakeit.Seed(time.Now().UnixNano())
 
 	s.mu.Lock()

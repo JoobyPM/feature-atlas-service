@@ -1,0 +1,39 @@
+services:
+  feature-atlas:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: feature-atlas-service
+    ports:
+      - "8443:8443"  # HTTPS API (mTLS)
+      - "8080:8080"  # HTTP health checks
+    volumes:
+      - ./certs:/app/certs:ro
+    command:
+      - "-listen"
+      - ":8443"
+      - "-health-port"
+      - ":8080"
+      - "-tls-cert"
+      - "/app/certs/server.crt"
+      - "-tls-key"
+      - "/app/certs/server.key"
+      - "-client-ca"
+      - "/app/certs/ca.crt"
+      - "-admin-cert"
+      - "/app/certs/admin.crt"
+      - "-seed"
+      - "200"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - feature-atlas-net
+
+networks:
+  feature-atlas-net:
+    driver: bridge
