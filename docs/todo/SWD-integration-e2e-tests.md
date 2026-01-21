@@ -29,8 +29,8 @@ Use [testcontainers-go](https://golang.testcontainers.org/) for containerized se
 ### Dependencies to Add
 
 ```
-github.com/stretchr/testify v1.9.0
-github.com/testcontainers/testcontainers-go v0.35.0
+github.com/stretchr/testify v1.11.1
+github.com/testcontainers/testcontainers-go v0.40.0
 ```
 
 ### Test Structure

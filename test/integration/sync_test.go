@@ -466,7 +466,8 @@ func TestManifestAddIdempotent(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add feature first time
-	m, _ = manifest.Load(manifestPath)
+	m, err = manifest.Load(manifestPath)
+	require.NoError(t, err, "load manifest for first add")
 	m.Features[serverFeature.ID] = manifest.Entry{
 		Name:     serverFeature.Name,
 		Summary:  serverFeature.Summary,
@@ -477,7 +478,8 @@ func TestManifestAddIdempotent(t *testing.T) {
 	require.NoError(t, err)
 
 	// Try to add again (simulating `manifest add` on existing feature)
-	m, _ = manifest.Load(manifestPath)
+	m, err = manifest.Load(manifestPath)
+	require.NoError(t, err, "load manifest for second add")
 	assert.True(t, m.HasFeature(serverFeature.ID), "feature should already exist")
 
 	// The command should skip without error

@@ -31,10 +31,16 @@ func featctlPath() string {
 	}
 
 	// Find relative to test file location (when running tests directly)
-	testDir, _ := os.Getwd()
+	testDir, err := os.Getwd()
+	if err != nil {
+		return "featctl" // fallback to PATH
+	}
 	projectRoot := filepath.Join(testDir, "..", "..")
 	if p := filepath.Join(projectRoot, "bin", "featctl"); fileExists(p) {
-		absPath, _ := filepath.Abs(p)
+		absPath, absErr := filepath.Abs(p)
+		if absErr != nil {
+			return p // return relative path if abs fails
+		}
 		return absPath
 	}
 
@@ -354,16 +360,18 @@ func TestLint_LocalFeature(t *testing.T) {
 
 	// Test each local ID format individually
 	for _, localID := range localIDs {
-		testFile := createTestYAMLFile(t, workDir, localID)
+		t.Run(localID, func(t *testing.T) {
+			testFile := createTestYAMLFile(t, workDir, localID)
 
-		_, stderr, exitCode := runFeatctl(t, workDir,
-			"lint",
-			"--offline",
-			"--manifest", manifestPath,
-			testFile,
-		)
+			_, stderr, exitCode := runFeatctl(t, workDir,
+				"lint",
+				"--offline",
+				"--manifest", manifestPath,
+				testFile,
+			)
 
-		assert.Equal(t, 0, exitCode, "lint should accept %s: %s", localID, stderr)
+			assert.Equal(t, 0, exitCode, "lint should accept %s: %s", localID, stderr)
+		})
 	}
 }
 
@@ -396,16 +404,18 @@ func TestLint_MixedFeatures(t *testing.T) {
 	// Test both feature types individually
 	testIDs := []string{"FT-LOCAL-unsynced", "FT-000123"}
 	for _, id := range testIDs {
-		testFile := createTestYAMLFile(t, workDir, id)
+		t.Run(id, func(t *testing.T) {
+			testFile := createTestYAMLFile(t, workDir, id)
 
-		_, stderr, exitCode := runFeatctl(t, workDir,
-			"lint",
-			"--offline",
-			"--manifest", manifestPath,
-			testFile,
-		)
+			_, stderr, exitCode := runFeatctl(t, workDir,
+				"lint",
+				"--offline",
+				"--manifest", manifestPath,
+				testFile,
+			)
 
-		assert.Equal(t, 0, exitCode, "lint should handle %s: %s", id, stderr)
+			assert.Equal(t, 0, exitCode, "lint should handle %s: %s", id, stderr)
+		})
 	}
 }
 
