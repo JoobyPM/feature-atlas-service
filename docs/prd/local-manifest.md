@@ -297,12 +297,12 @@ features:
 - [x] `POST /admin/v1/features` endpoint
 - [x] `featctl manifest add` command
 - [x] `featctl manifest sync` command
-- [ ] Integration tests for sync workflow
+- [x] Integration tests for sync workflow
 
 ### Phase 3: Lint Integration ✅
 - [x] Modify `lint` to check manifest first
 - [x] Add `--offline` and `--manifest` flags to `lint`
-- [ ] E2E tests for offline lint workflow
+- [x] E2E tests for offline lint workflow
 
 ## Testing Strategy
 

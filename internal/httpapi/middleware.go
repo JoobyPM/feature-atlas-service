@@ -23,11 +23,13 @@ const (
 // MTLS returns middleware that validates mTLS client certificates.
 // It extracts the client certificate from the TLS connection and looks up
 // the client in the store by fingerprint.
+// Security: Uses uniform error message to avoid leaking registration status.
 func MTLS(s *store.Store, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// net/http sets Request.TLS for TLS-enabled connections.
 		if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
-			http.Error(w, "mTLS required", http.StatusUnauthorized)
+			// Use generic message - don't reveal that cert was missing vs invalid
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		// PeerCertificates are parsed certs sent by peer, leaf first.
@@ -36,7 +38,9 @@ func MTLS(s *store.Store, next http.Handler) http.Handler {
 
 		client, ok := s.GetClient(fp)
 		if !ok {
-			http.Error(w, "client cert not registered", http.StatusForbidden)
+			// Use same generic message - don't reveal that cert exists but isn't registered
+			// This prevents enumeration attacks on registered certificates
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 

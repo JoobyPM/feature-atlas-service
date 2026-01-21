@@ -1,6 +1,7 @@
 .PHONY: all build build-cli run test clean certs fmt lint check help \
         docker-build docker-run docker-stop docker-logs \
-        register-alice test-me-alice test-me-admin test-search
+        register-alice test-me-alice test-me-admin test-search \
+        test-integration test-e2e test-all
 
 # Build variables
 SERVICE_NAME := feature-atlasd
@@ -99,6 +100,19 @@ test-cover:
 	$(GO) test -v -race -coverprofile=coverage.out ./...
 	$(GO) tool cover -html=coverage.out -o coverage.html
 	@echo "    Coverage report: coverage.html"
+
+# Run integration tests (requires Docker)
+test-integration: docker-build
+	@echo "==> Running integration tests..."
+	$(GO) test -v -count=1 -tags=integration ./test/integration/...
+
+# Run e2e tests (requires Docker)
+test-e2e: docker-build build-cli
+	@echo "==> Running e2e tests..."
+	FEATCTL_PATH=$(shell pwd)/bin/featctl $(GO) test -v -count=1 -tags=e2e ./test/e2e/...
+
+# Run all tests (unit + integration + e2e)
+test-all: test test-integration test-e2e
 
 # ============================================================================
 # Certificates
@@ -212,8 +226,11 @@ help:
 	@echo "  vet             Run go vet"
 	@echo ""
 	@echo "Testing:"
-	@echo "  test            Run tests"
-	@echo "  test-cover      Run tests with coverage report"
+	@echo "  test            Run unit tests"
+	@echo "  test-cover      Run unit tests with coverage report"
+	@echo "  test-integration Run integration tests (requires Docker)"
+	@echo "  test-e2e        Run e2e tests (requires Docker)"
+	@echo "  test-all        Run all tests (unit + integration + e2e)"
 	@echo "  certs           Generate TLS certificates"
 	@echo ""
 	@echo "Docker:"
