@@ -39,31 +39,31 @@ Add a user-friendly form to `featctl tui` for creating new features directly fro
 
 **Form Layout (using `huh` library):**
 
-```
+```text
 ┌─ Create New Feature ─────────────────────────────────────┐
 │                                                          │
 │  Name *                                                  │
-│  ┌────────────────────────────────────────────────────┐ │
-│  │ Authentication Service                             │ │
-│  └────────────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │ Authentication Service                             │  │
+│  └────────────────────────────────────────────────────┘  │
 │                                                          │
 │  Summary *                                               │
-│  ┌────────────────────────────────────────────────────┐ │
-│  │ Handles user authentication via OAuth2 and JWT     │ │
-│  │ tokens with session management.                    │ │
-│  └────────────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │ Handles user authentication via OAuth2 and JWT     │  │
+│  │ tokens with session management.                    │  │
+│  └────────────────────────────────────────────────────┘  │
 │                                                          │
 │  Owner (optional)                                        │
-│  ┌────────────────────────────────────────────────────┐ │
-│  │ platform-team                                      │ │
-│  └────────────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │ platform-team                                      │  │
+│  └────────────────────────────────────────────────────┘  │
 │                                                          │
 │  Tags (comma-separated, optional)                        │
-│  ┌────────────────────────────────────────────────────┐ │
-│  │ auth, security, core                               │ │
-│  └────────────────────────────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │ auth, security, core                               │  │
+│  └────────────────────────────────────────────────────┘  │
 │                                                          │
-│  ────────────────────────────────────────────────────── │
+│  ──────────────────────────────────────────────────────  │
 │  [Submit]  [Cancel]                                      │
 │                                                          │
 │  Tab: next field • Shift+Tab: prev • Enter: submit       │
@@ -76,7 +76,7 @@ Add a user-friendly form to `featctl tui` for creating new features directly fro
 
 **Validation Flow:**
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                    User submits form                        │
 └─────────────────────────┬───────────────────────────────────┘
@@ -159,7 +159,7 @@ func resolveCacheDir() (string, error) {
 
 **Directory Structure:**
 
-```
+```text
 .fas/
 ├── features.json    # Cached feature list
 └── meta.json        # Cache metadata (TTL, last sync)
@@ -212,7 +212,7 @@ func resolveCacheDir() (string, error) {
 
 **Success Flow:**
 
-```
+```text
 User fills form → Submit → Show "Checking..." →
   → Server name check (exact match filter) →
   → If duplicate warning: "Similar feature exists. Create anyway? [Y/N]" →
@@ -1363,7 +1363,7 @@ This ensures `huh.Form`'s internal pointers always point to valid memory.
 
 Since `huh` validators are synchronous, we handle async validation (server check) after form submission:
 
-```
+```text
 Form.Validate() [sync] → Form.Submit → checkDuplicateCmd() [async] → 
   → duplicateCheckResultMsg → FormStateConfirmDuplicate/FormStateSubmitting
 ```

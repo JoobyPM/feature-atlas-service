@@ -269,7 +269,10 @@ func buildTUIOptions() (tui.Options, bool, string, error) {
 	mPath, discoverErr := manifest.Discover(tuiManifest)
 	if discoverErr != nil {
 		if errors.Is(discoverErr, manifest.ErrManifestNotFound) {
-			// No manifest - that's fine, features will show as "on server"
+			// No manifest - that's fine, but preserve explicit --manifest path
+			if tuiManifest != "" {
+				return opts, false, tuiManifest, nil
+			}
 			return opts, false, "", nil
 		}
 		return opts, false, "", fmt.Errorf("discover manifest: %w", discoverErr)

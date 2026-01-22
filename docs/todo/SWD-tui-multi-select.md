@@ -37,7 +37,7 @@ Enhance `featctl tui` to support multi-feature selection with manifest integrati
 ## Visual Layout
 
 ### Search View
-```
+```text
 🔍 Feature Atlas
 
 > auth
@@ -53,7 +53,7 @@ Selected: 2
 ```
 
 ### Confirmation Dialog
-```
+```text
 Add 2 feature(s) to manifest?
 
   • FT-000001 - Authentication
@@ -63,7 +63,7 @@ Add 2 feature(s) to manifest?
 ```
 
 ### Feature Creation Form (press `n`)
-```
+```text
 Create New Feature
 
   Name *
@@ -138,7 +138,7 @@ featctl tui --cert certs/admin.crt --key certs/admin.key  # Admin mode (required
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                          TUI Model                              │
 │  ┌──────────────┐    ┌──────────────┐    ┌───────────────┐      │

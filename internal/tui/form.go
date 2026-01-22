@@ -135,6 +135,7 @@ func (m *FormModel) buildForm() *huh.Form {
 				Description("Team or person (optional)").
 				Value(&m.owner).
 				Validate(func(s string) error {
+					s = strings.TrimSpace(s)
 					if len(s) > maxOwnerLen {
 						return fmt.Errorf("owner too long (max %d)", maxOwnerLen)
 					}
