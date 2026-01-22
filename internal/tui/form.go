@@ -151,8 +151,15 @@ func (m *FormModel) buildForm() *huh.Form {
 					if s == "" {
 						return nil
 					}
+					// Count only non-empty trimmed tags (ignore empty parts like "a,,b")
 					parts := strings.Split(s, ",")
-					if len(parts) > maxTags {
+					count := 0
+					for _, t := range parts {
+						if strings.TrimSpace(t) != "" {
+							count++
+						}
+					}
+					if count > maxTags {
 						return fmt.Errorf("too many tags (max %d)", maxTags)
 					}
 					return nil

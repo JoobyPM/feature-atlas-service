@@ -117,14 +117,25 @@ func TestFormModel_Validate_Tags(t *testing.T) {
 		{"multiple tags", "auth,security,core", false},
 		{"max tags (10)", "a,b,c,d,e,f,g,h,i,j", false},
 		{"too many tags (11)", "a,b,c,d,e,f,g,h,i,j,k", true},
+		{"empty parts ignored", "a,,b", false},                       // Only 2 valid tags
+		{"whitespace parts ignored", "a, ,b", false},                 // Only 2 valid tags
+		{"trailing comma", "a,b,c,", false},                          // Only 3 valid tags
+		{"10 valid with empty parts", "a,,b,c,d,e,f,g,h,i,j", false}, // 10 valid tags
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			hasErr := false
 			if tt.input != "" {
+				// Count only non-empty trimmed tags (matches form.go validation)
 				parts := strings.Split(tt.input, ",")
-				hasErr = len(parts) > maxTags
+				count := 0
+				for _, p := range parts {
+					if strings.TrimSpace(p) != "" {
+						count++
+					}
+				}
+				hasErr = count > maxTags
 			}
 			assert.Equal(t, tt.expectErr, hasErr)
 		})
