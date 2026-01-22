@@ -274,6 +274,53 @@ func (m *Manifest) AddFeature(id, name, summary, owner string, tags []string) er
 	return nil
 }
 
+// Feature represents a feature to add to the manifest (input struct).
+type Feature struct {
+	ID       string
+	Name     string
+	Summary  string
+	Owner    string
+	Tags     []string
+	IsSynced bool // True if feature exists on server (has FT-NNNNNN ID)
+}
+
+// AddSyncedFeature adds a feature with a server ID to the manifest.
+// Use this for features created on the server (FT-NNNNNN format).
+func (m *Manifest) AddSyncedFeature(f Feature) error {
+	if f.Name == "" {
+		return ErrEmptyName
+	}
+	if f.Summary == "" {
+		return ErrEmptySummary
+	}
+
+	// Validate server ID format
+	if err := ValidateServerID(f.ID); err != nil {
+		return err
+	}
+
+	// Check for duplicate
+	if _, exists := m.Features[f.ID]; exists {
+		return fmt.Errorf("%w: %s", ErrIDExists, f.ID)
+	}
+
+	syncedAt := ""
+	if f.IsSynced {
+		syncedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+
+	m.Features[f.ID] = Entry{
+		Name:     f.Name,
+		Summary:  f.Summary,
+		Owner:    f.Owner,
+		Tags:     f.Tags,
+		Synced:   f.IsSynced,
+		SyncedAt: syncedAt,
+	}
+
+	return nil
+}
+
 // GetFeature retrieves a feature by ID.
 func (m *Manifest) GetFeature(id string) (Entry, bool) {
 	entry, ok := m.Features[id]

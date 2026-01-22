@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/JoobyPM/feature-atlas-service/internal/apiclient"
+	"github.com/JoobyPM/feature-atlas-service/internal/cache"
 	"github.com/JoobyPM/feature-atlas-service/internal/manifest"
 	"github.com/JoobyPM/feature-atlas-service/internal/stringutil"
 	"github.com/JoobyPM/feature-atlas-service/internal/tui"
@@ -52,6 +53,10 @@ var (
 	manifestOutput   string
 	manifestUnsynced bool
 	manifestDryRun   bool
+
+	// TUI flags
+	tuiSync     bool
+	tuiManifest string
 
 	// Feature create flags
 	featureID      string
@@ -189,23 +194,253 @@ var searchCmd = &cobra.Command{
 
 var tuiCmd = &cobra.Command{
 	Use:   "tui",
-	Short: "Interactive terminal UI for browsing features",
+	Short: "Interactive terminal UI for browsing and selecting features",
 	Long: `Launch an interactive terminal interface for searching and
-selecting features. Use arrow keys to navigate and Enter to select.`,
+selecting features with multi-select support.
+
+Navigation:
+  ↑/↓          Navigate list
+  Space        Toggle selection
+  n            Create new feature
+  Ctrl+A       Select all visible
+  Ctrl+N       Deselect all
+  Enter        Confirm selection
+  Esc          Clear search or quit
+
+Type to search - all keys go to search input. Selections persist across
+search changes - select items from different searches and confirm all
+at once. Use --sync to push them to the server immediately.
+
+Press 'n' to open a form for creating new features directly on the server.`,
 	PreRunE: func(_ *cobra.Command, _ []string) error {
 		return initClient()
 	},
 	RunE: func(_ *cobra.Command, _ []string) error {
-		selected, err := tui.Run(client)
+		// Build TUI options with manifest state
+		opts, manifestLoaded, mPath, err := buildTUIOptions()
 		if err != nil {
 			return err
 		}
 
-		if selected != nil {
-			fmt.Printf("\nSelected: %s - %s\n", selected.ID, selected.Name)
+		// Run TUI
+		result, tuiErr := tui.Run(client, opts)
+		if tuiErr != nil {
+			return tuiErr
 		}
+
+		// Handle cancellation
+		if result.Cancelled || len(result.Selected) == 0 {
+			return nil
+		}
+
+		// Add selected features to manifest
+		if err := addSelectedToManifest(result.Selected, manifestLoaded, mPath); err != nil {
+			return err
+		}
+
+		// Sync if requested
+		if result.SyncRequested {
+			return syncAfterTUI(mPath)
+		}
+
 		return nil
 	},
+}
+
+// buildTUIOptions loads manifest state and builds TUI options.
+func buildTUIOptions() (tui.Options, bool, string, error) {
+	opts := tui.Options{
+		ManifestFeatures: make(map[string]bool),
+		LocalFeatures:    make(map[string]bool),
+		SyncFlag:         tuiSync,
+	}
+
+	// Try to load cache for validation hints
+	cacheDir, cacheErr := cache.ResolveDir()
+	if cacheErr == nil {
+		c := cache.New(cacheDir)
+		if loadErr := c.Load(); loadErr == nil {
+			opts.Cache = c
+		}
+		// If cache load fails, continue without cache (non-critical)
+	}
+
+	// Try to load manifest
+	mPath, discoverErr := manifest.Discover(tuiManifest)
+	if discoverErr != nil {
+		if errors.Is(discoverErr, manifest.ErrManifestNotFound) {
+			// No manifest - that's fine, but preserve explicit --manifest path
+			if tuiManifest != "" {
+				return opts, false, tuiManifest, nil
+			}
+			return opts, false, "", nil
+		}
+		return opts, false, "", fmt.Errorf("discover manifest: %w", discoverErr)
+	}
+
+	m, loadErr := manifest.Load(mPath)
+	if loadErr != nil {
+		if errors.Is(loadErr, manifest.ErrInvalidYAML) {
+			fmt.Fprintf(os.Stderr, "Warning: manifest is corrupted, ignoring\n")
+			return opts, false, "", nil
+		}
+		return opts, false, "", fmt.Errorf("load manifest: %w", loadErr)
+	}
+
+	// Pass manifest to TUI for feature creation
+	opts.Manifest = m
+	opts.ManifestPath = mPath
+
+	// Populate manifest and local features
+	for id, entry := range m.Features {
+		opts.ManifestFeatures[id] = true
+		if !entry.Synced {
+			opts.LocalFeatures[id] = true
+		}
+	}
+
+	return opts, true, mPath, nil
+}
+
+// addSelectedToManifest adds selected features to the manifest.
+func addSelectedToManifest(selected []apiclient.SuggestItem, manifestLoaded bool, mPath string) error {
+	// Determine manifest path
+	path := mPath
+	if path == "" {
+		// Create new manifest in current directory
+		path = manifest.DefaultFilename
+	}
+
+	// Load or create manifest
+	var m *manifest.Manifest
+	if manifestLoaded {
+		var loadErr error
+		m, loadErr = manifest.Load(path)
+		if loadErr != nil {
+			return fmt.Errorf("reload manifest: %w", loadErr)
+		}
+	} else {
+		m = manifest.New()
+	}
+
+	// Add selected features
+	var added int
+	for _, item := range selected {
+		// Skip if already in manifest
+		if m.HasFeature(item.ID) {
+			fmt.Printf("  • %s already in manifest (skipped)\n", item.ID)
+			continue
+		}
+
+		// Add to manifest with synced status (features from server are synced)
+		m.Features[item.ID] = manifest.Entry{
+			Name:     item.Name,
+			Summary:  item.Summary,
+			Synced:   true,
+			SyncedAt: time.Now().Format(time.RFC3339),
+		}
+		fmt.Printf("  ✓ Added %s (%s)\n", item.ID, item.Name)
+		added++
+	}
+
+	if added == 0 {
+		fmt.Println("No new features to add")
+		return nil
+	}
+
+	// Save manifest
+	if err := m.SaveWithLock(path); err != nil {
+		return fmt.Errorf("save manifest: %w", err)
+	}
+
+	fmt.Printf("\n✓ Added %d feature(s) to %s\n", added, path)
+	return nil
+}
+
+// syncAfterTUI syncs unsynced features after TUI selection.
+func syncAfterTUI(mPath string) error {
+	// Determine manifest path
+	path := mPath
+	if path == "" {
+		var discoverErr error
+		path, discoverErr = manifest.Discover(tuiManifest)
+		if discoverErr != nil {
+			return fmt.Errorf("discover manifest for sync: %w", discoverErr)
+		}
+	}
+
+	// Load manifest
+	m, err := manifest.Load(path)
+	if err != nil {
+		return fmt.Errorf("load manifest for sync: %w", err)
+	}
+
+	// Find unsynced features
+	unsynced := m.ListFeatures(true)
+	if len(unsynced) == 0 {
+		fmt.Println("\nNo unsynced features to sync")
+		return nil
+	}
+
+	// Sort for deterministic order
+	ids := make([]string, 0, len(unsynced))
+	for id := range unsynced {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	fmt.Printf("\nSyncing %d feature(s) to server...\n", len(ids))
+
+	var synced, failed int
+	for _, localID := range ids {
+		entry := unsynced[localID]
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		feature, createErr := client.CreateFeature(ctx, apiclient.CreateFeatureRequest{
+			Name:    entry.Name,
+			Summary: entry.Summary,
+			Owner:   entry.Owner,
+			Tags:    entry.Tags,
+		})
+		cancel()
+
+		if createErr != nil {
+			fmt.Fprintf(os.Stderr, "  ✗ %s: %v\n", localID, createErr)
+			failed++
+			continue
+		}
+
+		// Update manifest: remove old ID, add new with alias
+		delete(m.Features, localID)
+		m.Features[feature.ID] = manifest.Entry{
+			Name:     feature.Name,
+			Summary:  feature.Summary,
+			Owner:    feature.Owner,
+			Tags:     feature.Tags,
+			Synced:   true,
+			SyncedAt: time.Now().Format(time.RFC3339),
+			Alias:    localID,
+		}
+
+		fmt.Printf("  ✓ %s → %s (%s)\n", localID, feature.ID, feature.Name)
+		synced++
+	}
+
+	// Save manifest
+	if err := m.SaveWithLock(path); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to save manifest: %v\n", err)
+		if synced > 0 {
+			fmt.Fprintf(os.Stderr, "Warning: %d feature(s) were created on server but manifest was not updated\n", synced)
+		}
+		return exitErr(exitWrite, "failed to save manifest")
+	}
+
+	fmt.Printf("\nSynced: %d, Failed: %d\n", synced, failed)
+
+	if failed > 0 {
+		return exitErr(exitValidation, "partial sync failure")
+	}
+	return nil
 }
 
 var getCmd = &cobra.Command{
@@ -762,6 +997,10 @@ func init() {
 
 	// Get flags
 	getCmd.Flags().StringVarP(&getOutput, "output", "o", "text", "Output format (text, json, yaml)")
+
+	// TUI flags
+	tuiCmd.Flags().BoolVar(&tuiSync, "sync", false, "Sync added features to server immediately")
+	tuiCmd.Flags().StringVar(&tuiManifest, "manifest", "", "Custom manifest path")
 
 	// Lint flags
 	lintCmd.Flags().IntVar(&minDescLength, "min-desc-length", 10, "Minimum description length")
