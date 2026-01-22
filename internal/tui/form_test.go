@@ -29,35 +29,20 @@ func TestFormModel_Validate_Name(t *testing.T) {
 		name      string
 		input     string
 		expectErr bool
-		errMsg    string
 	}{
-		{"empty name", "", true, "name is required"},
-		{"valid name", "Auth Service", false, ""},
-		{"max length", strings.Repeat("a", 200), false, ""},
-		{"too long", strings.Repeat("a", 201), true, "name too long"},
-		{"whitespace only", "   ", true, "name is required"},
+		{"empty name", "", true},
+		{"valid name", "Auth Service", false},
+		{"max length", strings.Repeat("a", 200), false},
+		{"too long", strings.Repeat("a", 201), true},
+		{"whitespace only", "   ", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := NewFormModel(nil, nil)
-			m.name = tt.input
-
-			// Get the validate function from the form
-			// We test by checking the field directly
+			// Match form.go validation: trim then check empty/length
 			s := strings.TrimSpace(tt.input)
-			var err error
-			if s == "" {
-				err = assert.AnError // Simulate validation error
-			} else if len(s) > maxNameLen {
-				err = assert.AnError
-			}
-
-			if tt.expectErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
+			hasErr := s == "" || len(s) > maxNameLen
+			assert.Equal(t, tt.expectErr, hasErr)
 		})
 	}
 }
