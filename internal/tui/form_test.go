@@ -95,11 +95,15 @@ func TestFormModel_Validate_Owner(t *testing.T) {
 		{"valid owner", "platform-team", false},
 		{"max length", strings.Repeat("a", 100), false},
 		{"too long", strings.Repeat("a", 101), true},
+		{"whitespace trimmed", "  team  ", false},                              // 4 chars after trim
+		{"max with whitespace", "  " + strings.Repeat("a", 100) + "  ", false}, // 100 chars after trim
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			hasErr := len(tt.input) > maxOwnerLen
+			// Match form.go validation: trim then check length
+			s := strings.TrimSpace(tt.input)
+			hasErr := len(s) > maxOwnerLen
 			assert.Equal(t, tt.expectErr, hasErr)
 		})
 	}
