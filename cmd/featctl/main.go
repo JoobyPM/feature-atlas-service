@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/JoobyPM/feature-atlas-service/internal/apiclient"
+	"github.com/JoobyPM/feature-atlas-service/internal/cache"
 	"github.com/JoobyPM/feature-atlas-service/internal/manifest"
 	"github.com/JoobyPM/feature-atlas-service/internal/stringutil"
 	"github.com/JoobyPM/feature-atlas-service/internal/tui"
@@ -200,6 +201,7 @@ selecting features with multi-select support.
 Navigation:
   ↑/↓          Navigate list
   Space        Toggle selection
+  n            Create new feature
   Ctrl+A       Select all visible
   Ctrl+N       Deselect all
   Enter        Confirm selection
@@ -207,7 +209,9 @@ Navigation:
 
 Type to search - all keys go to search input. Selections persist across
 search changes - select items from different searches and confirm all
-at once. Use --sync to push them to the server immediately.`,
+at once. Use --sync to push them to the server immediately.
+
+Press 'n' to open a form for creating new features directly on the server.`,
 	PreRunE: func(_ *cobra.Command, _ []string) error {
 		return initClient()
 	},
@@ -251,6 +255,16 @@ func buildTUIOptions() (tui.Options, bool, string, error) {
 		SyncFlag:         tuiSync,
 	}
 
+	// Try to load cache for validation hints
+	cacheDir, cacheErr := cache.ResolveDir()
+	if cacheErr == nil {
+		c := cache.New(cacheDir)
+		if loadErr := c.Load(); loadErr == nil {
+			opts.Cache = c
+		}
+		// If cache load fails, continue without cache (non-critical)
+	}
+
 	// Try to load manifest
 	mPath, discoverErr := manifest.Discover(tuiManifest)
 	if discoverErr != nil {
@@ -269,6 +283,10 @@ func buildTUIOptions() (tui.Options, bool, string, error) {
 		}
 		return opts, false, "", fmt.Errorf("load manifest: %w", loadErr)
 	}
+
+	// Pass manifest to TUI for feature creation
+	opts.Manifest = m
+	opts.ManifestPath = mPath
 
 	// Populate manifest and local features
 	for id, entry := range m.Features {

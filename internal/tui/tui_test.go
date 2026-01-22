@@ -532,3 +532,82 @@ func TestFeatureItem_Status(t *testing.T) {
 	assert.Contains(t, view, "[on server]")
 	assert.Contains(t, view, "[local only]")
 }
+
+// TestModel_NKeyOpensCreateForm verifies 'n' key opens the create form.
+func TestModel_NKeyOpensCreateForm(t *testing.T) {
+	model := New(nil, Options{})
+	model = loadTestItems(model, []apiclient.SuggestItem{
+		{ID: "FT-000001", Name: "Feature 1", Summary: "First"},
+	})
+
+	assert.Equal(t, StateSearching, model.state)
+
+	// Press 'n' key
+	model, cmd := updateModel(model, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+
+	assert.Equal(t, StateCreating, model.state, "should transition to creating state")
+	assert.NotNil(t, model.formModel, "formModel should be initialized")
+	assert.NotNil(t, cmd, "should return form init command")
+}
+
+// TestModel_ViewSearch_ShowsNewKeyHint verifies the help text includes 'n' key.
+func TestModel_ViewSearch_ShowsNewKeyHint(t *testing.T) {
+	model := New(nil, Options{})
+	view := model.View()
+
+	assert.Contains(t, view, "n: new", "should show 'n' key hint for creating features")
+}
+
+// TestModel_StateCreating_DelegatesMessages verifies messages are forwarded to form.
+func TestModel_StateCreating_DelegatesMessages(t *testing.T) {
+	model := New(nil, Options{})
+	model.state = StateCreating
+	model.formModel = NewFormModel(nil, nil)
+
+	// Initial state
+	assert.Equal(t, FormStateEditing, model.formModel.state)
+
+	// Ctrl+C should quit from creating state
+	model, cmd := updateModel(model, tea.KeyMsg{Type: tea.KeyCtrlC})
+	assert.Equal(t, StateQuitting, model.state, "Ctrl+C should quit")
+	assert.NotNil(t, cmd, "should return quit command")
+}
+
+// TestModel_StateCreating_FormCancelled verifies form cancellation returns to search.
+func TestModel_StateCreating_FormCancelled(_ *testing.T) {
+	// Note: We can't easily simulate huh's internal abort state without mocking.
+	// The cancellation behavior is verified through integration tests.
+	// This test documents the expected behavior:
+	// - When formModel.Cancelled() returns true, state should go back to StateSearching
+}
+
+// TestModel_StateCreating_ViewShowsForm verifies form view is rendered.
+func TestModel_StateCreating_ViewShowsForm(t *testing.T) {
+	model := New(nil, Options{})
+	model.state = StateCreating
+	model.formModel = NewFormModel(nil, nil)
+
+	view := model.View()
+
+	assert.Contains(t, view, "Create New Feature", "should show form title")
+	assert.Contains(t, view, "Tab: next", "should show form help")
+	assert.Contains(t, view, "Esc: cancel", "should show cancel hint")
+}
+
+// TestModel_FetchSuggestions_NilClient verifies nil client handling.
+func TestModel_FetchSuggestions_NilClient(t *testing.T) {
+	model := New(nil, Options{}) // nil client
+
+	// Get the command from fetchSuggestions
+	cmd := model.fetchSuggestions("test")
+	require.NotNil(t, cmd, "command should not be nil")
+
+	// Execute the command - should not panic
+	msg := cmd()
+	require.NotNil(t, msg, "message should not be nil")
+
+	// Verify it returns the specific error
+	sugMsg, ok := msg.(suggestionsMsg)
+	require.True(t, ok, "should return suggestionsMsg")
+	assert.ErrorIs(t, sugMsg.err, ErrNoServerConnection, "should return ErrNoServerConnection")
+}

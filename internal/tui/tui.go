@@ -13,6 +13,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/JoobyPM/feature-atlas-service/internal/apiclient"
+	"github.com/JoobyPM/feature-atlas-service/internal/cache"
+	"github.com/JoobyPM/feature-atlas-service/internal/manifest"
 )
 
 const (
@@ -124,12 +126,16 @@ type State int
 const (
 	StateSearching State = iota
 	StateConfirm
+	StateCreating // Form view for creating new features
 	StateSelected
 	StateQuitting
 )
 
 // ErrTUIUnexpectedModel is returned when the TUI returns an unexpected model type.
 var ErrTUIUnexpectedModel = errors.New("unexpected TUI model type")
+
+// ErrNoServerConnection is returned when operations require server but client is nil.
+var ErrNoServerConnection = errors.New("no server connection")
 
 // Result contains the outcome of the TUI session.
 type Result struct {
@@ -149,6 +155,12 @@ type Options struct {
 	LocalFeatures map[string]bool
 	// SyncFlag indicates if --sync was passed (auto-sync on confirm).
 	SyncFlag bool
+	// Cache provides local feature caching for validation hints.
+	Cache *cache.Cache
+	// Manifest is used to add created features to the local manifest.
+	Manifest *manifest.Manifest
+	// ManifestPath is the path to save the manifest file.
+	ManifestPath string
 }
 
 // selectedItem stores full data for a selected feature (SST for selections).
@@ -176,6 +188,12 @@ type Model struct {
 	lastQuery        string
 	debounceID       int
 	loading          bool
+	// Feature creation support
+	formModel    *FormModel         // Form for creating new features (pointer: huh.Form requires stable memory)
+	cache        *cache.Cache       // Local cache for validation hints
+	manifest     *manifest.Manifest // Manifest for adding created features
+	manifestPath string             // Path to save manifest
+	cacheUpdated bool               // Tracks if we've already added created feature to cache
 }
 
 // debounceMsg is sent after the debounce delay.
@@ -222,19 +240,95 @@ func New(client *apiclient.Client, opts Options) Model {
 		syncFlag:         opts.SyncFlag,
 		width:            80,
 		height:           24,
+		cache:            opts.Cache,
+		manifest:         opts.Manifest,
+		manifestPath:     opts.ManifestPath,
 	}
 }
 
 // Init initializes the model.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		textinput.Blink,
 		m.fetchSuggestions(""),
-	)
+	}
+
+	// Check if cache needs refresh
+	if m.cache != nil && m.cache.IsStale() {
+		cmds = append(cmds, m.refreshCacheCmd())
+	}
+
+	return tea.Batch(cmds...)
 }
 
 // Update handles messages and updates the model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Handle StateCreating FIRST - forward ALL messages to form
+	if m.state == StateCreating && m.formModel != nil {
+		// Check for global quit (Ctrl+C)
+		if keyMsg, ok := msg.(tea.KeyMsg); ok && keyMsg.String() == keyCtrlC {
+			m.state = StateQuitting
+			return m, tea.Quit
+		}
+
+		// Delegate ALL messages to form (KeyMsg, featureCreatedMsg, duplicateCheckResultMsg, etc.)
+		cmd := m.formModel.Update(msg)
+
+		// Check if user acknowledged success and wants to return
+		if m.formModel.Done() {
+			m.state = StateSearching
+			m.formModel = nil
+			m.cacheUpdated = false // Reset for next form
+			return m, nil
+		}
+
+		// Check if form completed successfully (first time only)
+		// cacheUpdated flag prevents duplicate adds when cacheSavedMsg arrives
+		if m.formModel.Completed() && !m.cacheUpdated {
+			if created := m.formModel.GetCreatedFeature(); created != nil {
+				var cmds []tea.Cmd
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+
+				// 1. Add to manifest (source of truth - async to avoid blocking)
+				if m.manifest != nil {
+					cmds = append(cmds, m.saveManifestCmd(manifest.Feature{
+						ID:       created.ID,
+						Name:     created.Name,
+						Summary:  created.Summary,
+						Owner:    created.Owner,
+						Tags:     created.Tags,
+						IsSynced: true, // Created on server, so it's synced
+					}))
+				}
+
+				// 2. Add to cache (performance hint)
+				if m.cache != nil {
+					m.cache.Add(cache.CachedFeature{
+						ID:      created.ID,
+						Name:    created.Name,
+						Summary: created.Summary,
+					})
+					cmds = append(cmds, m.saveCacheCmd())
+				}
+
+				m.cacheUpdated = true // Mark as done
+				return m, tea.Batch(cmds...)
+			}
+		}
+
+		// Check if form was cancelled (huh handles Esc → StateAborted)
+		if m.formModel.Cancelled() {
+			m.state = StateSearching
+			m.formModel = nil
+			m.cacheUpdated = false // Reset for next form
+			return m, nil
+		}
+
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		return m.handleKeyMsg(msg)
@@ -272,6 +366,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.err = nil
 		return m, nil
+
+	case cacheRefreshResultMsg:
+		if m.cache != nil && msg.err == nil {
+			// Update cache data (in Update, not in Cmd - safe!)
+			m.cache.Update(msg.features, msg.serverURL, msg.complete)
+			// Save to disk via command
+			return m, m.saveCacheCmd()
+		}
+		return m, nil
+
+	case cacheSavedMsg:
+		// Cache saved (or failed - non-critical, don't block)
+		return m, nil
+
+	case manifestSavedMsg:
+		// Manifest saved (or failed - feature already on server, this is secondary)
+		return m, nil
 	}
 
 	return m, nil
@@ -286,10 +397,10 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Global quit keys
 	switch msg.String() {
-	case "ctrl+c":
+	case keyCtrlC:
 		m.state = StateQuitting
 		return m, tea.Quit
-	case "esc":
+	case keyEsc:
 		// If search has content, clear it; otherwise quit
 		if m.textInput.Value() != "" {
 			m.textInput.SetValue("")
@@ -326,6 +437,11 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "ctrl+n": // Deselect all
 		return m.handleDeselectAll()
+
+	case "n": // Open feature creation form
+		m.state = StateCreating
+		m.formModel = NewFormModel(m.client, m.cache)
+		return m, m.formModel.Init()
 	}
 
 	// All other keys go to text input for searching
@@ -372,11 +488,11 @@ func (m Model) handleConfirmKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.state = StateSelected
 		return m, tea.Quit
 
-	case "n", "N", "esc", "q":
+	case "n", "N", keyEsc, "q":
 		m.state = StateSearching
 		return m, nil
 
-	case "ctrl+c":
+	case keyCtrlC:
 		m.state = StateQuitting
 		return m, tea.Quit
 	}
@@ -464,10 +580,7 @@ func (m Model) handleDeselectAll() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Clear the map by deleting all keys
-	for k := range m.selected {
-		delete(m.selected, k)
-	}
+	clear(m.selected)
 	return m, nil
 }
 
@@ -490,6 +603,10 @@ func (m Model) View() string {
 
 	if m.state == StateConfirm {
 		return m.viewConfirmation()
+	}
+
+	if m.state == StateCreating && m.formModel != nil {
+		return m.formModel.View()
 	}
 
 	if m.state == StateSelected {
@@ -530,7 +647,7 @@ func (m Model) viewSearch() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("↑/↓: navigate • Space: toggle • Ctrl+A: all • Ctrl+N: none • Enter: confirm • Esc: quit"))
+	b.WriteString(helpStyle.Render("↑/↓: navigate • Space: toggle • n: new • Ctrl+A: all • Ctrl+N: none • Enter: confirm • Esc: quit"))
 
 	return b.String()
 }
@@ -699,11 +816,17 @@ func (m Model) debounceSearch(query string, id int) tea.Cmd {
 
 // fetchSuggestions fetches suggestions from the API.
 func (m Model) fetchSuggestions(query string) tea.Cmd {
+	// Capture client for closure (defensive: handle nil)
+	clientRef := m.client
 	return func() tea.Msg {
+		if clientRef == nil {
+			return suggestionsMsg{err: ErrNoServerConnection}
+		}
+
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		items, err := m.client.Suggest(ctx, query, maxSuggestions)
+		items, err := clientRef.Suggest(ctx, query, maxSuggestions)
 		return suggestionsMsg{items: items, err: err}
 	}
 }
@@ -752,4 +875,90 @@ func RunLegacy(client *apiclient.Client) (*apiclient.SuggestItem, error) {
 	}
 
 	return &result.Selected[0], nil
+}
+
+// Messages for cache operations.
+type cacheRefreshResultMsg struct {
+	features  []cache.CachedFeature
+	serverURL string
+	complete  bool
+	err       error
+}
+
+type cacheSavedMsg struct{ err error }
+
+type manifestSavedMsg struct{ err error }
+
+// refreshCacheCmd fetches features and returns result via message.
+func (m Model) refreshCacheCmd() tea.Cmd {
+	// Capture dependencies for closure
+	clientRef := m.client
+	serverURL := ""
+	if clientRef != nil {
+		serverURL = clientRef.BaseURL
+	}
+
+	return func() tea.Msg {
+		if clientRef == nil {
+			return cacheRefreshResultMsg{err: ErrNoServerConnection}
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		// Fetch features (API doesn't support pagination, so single request)
+		features, err := clientRef.Search(ctx, "", cacheRefreshLimit)
+		if err != nil {
+			return cacheRefreshResultMsg{err: err}
+		}
+
+		allFeatures := make([]cache.CachedFeature, len(features))
+		for i, f := range features {
+			allFeatures[i] = cache.CachedFeature{
+				ID:      f.ID,
+				Name:    f.Name,
+				Summary: f.Summary,
+			}
+		}
+
+		// Mark incomplete if we hit limit (server may have more features)
+		return cacheRefreshResultMsg{
+			features:  allFeatures,
+			serverURL: serverURL,
+			complete:  len(features) < cacheRefreshLimit,
+		}
+	}
+}
+
+// saveCacheCmd saves the cache to disk asynchronously.
+func (m Model) saveCacheCmd() tea.Cmd {
+	cacheRef := m.cache // Capture for closure
+	return func() tea.Msg {
+		if cacheRef == nil {
+			return cacheSavedMsg{}
+		}
+		err := cacheRef.Save()
+		return cacheSavedMsg{err: err}
+	}
+}
+
+// saveManifestCmd adds a feature to the manifest and saves it asynchronously.
+func (m Model) saveManifestCmd(feature manifest.Feature) tea.Cmd {
+	manifestRef := m.manifest // Capture for closure
+	manifestPath := m.manifestPath
+	return func() tea.Msg {
+		if manifestRef == nil {
+			return manifestSavedMsg{}
+		}
+		if err := manifestRef.AddSyncedFeature(feature); err != nil {
+			return manifestSavedMsg{err: fmt.Errorf("add feature: %w", err)}
+		}
+		if manifestPath != "" {
+			// Use SaveWithLock for inter-process safety
+			if err := manifestRef.SaveWithLock(manifestPath); err != nil {
+				return manifestSavedMsg{err: fmt.Errorf("save manifest: %w", err)}
+			}
+		}
+		return manifestSavedMsg{}
+	}
 }

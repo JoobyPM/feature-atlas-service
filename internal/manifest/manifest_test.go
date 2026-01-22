@@ -419,6 +419,128 @@ func TestAddFeature(t *testing.T) {
 	})
 }
 
+func TestAddSyncedFeature(t *testing.T) {
+	t.Parallel()
+
+	t.Run("valid server feature", func(t *testing.T) {
+		t.Parallel()
+		m := New()
+
+		err := m.AddSyncedFeature(Feature{
+			ID:       "FT-000001",
+			Name:     "Auth Service",
+			Summary:  "Handles authentication",
+			Owner:    "platform-team",
+			Tags:     []string{"auth", "security"},
+			IsSynced: true,
+		})
+		if err != nil {
+			t.Errorf("AddSyncedFeature() error = %v, want nil", err)
+		}
+
+		entry, ok := m.Features["FT-000001"]
+		if !ok {
+			t.Fatal("AddSyncedFeature() feature not added to map")
+		}
+		if entry.Name != "Auth Service" {
+			t.Errorf("entry.Name = %q, want %q", entry.Name, "Auth Service")
+		}
+		if entry.Summary != "Handles authentication" {
+			t.Errorf("entry.Summary = %q, want %q", entry.Summary, "Handles authentication")
+		}
+		if entry.Owner != "platform-team" {
+			t.Errorf("entry.Owner = %q, want %q", entry.Owner, "platform-team")
+		}
+		if !entry.Synced {
+			t.Error("entry.Synced = false, want true")
+		}
+		if entry.SyncedAt == "" {
+			t.Error("entry.SyncedAt should be set when IsSynced=true")
+		}
+	})
+
+	t.Run("invalid server ID format", func(t *testing.T) {
+		t.Parallel()
+		m := New()
+
+		err := m.AddSyncedFeature(Feature{
+			ID:      "FT-LOCAL-auth", // Local ID, not server ID
+			Name:    "Auth",
+			Summary: "Summary",
+		})
+		if !errors.Is(err, ErrInvalidID) {
+			t.Errorf("AddSyncedFeature() error = %v, want ErrInvalidID", err)
+		}
+	})
+
+	t.Run("duplicate ID", func(t *testing.T) {
+		t.Parallel()
+		m := New()
+
+		_ = m.AddSyncedFeature(Feature{
+			ID:      "FT-000001",
+			Name:    "First",
+			Summary: "First feature",
+		})
+		err := m.AddSyncedFeature(Feature{
+			ID:      "FT-000001",
+			Name:    "Second",
+			Summary: "Second feature",
+		})
+		if !errors.Is(err, ErrIDExists) {
+			t.Errorf("AddSyncedFeature() error = %v, want ErrIDExists", err)
+		}
+	})
+
+	t.Run("empty name", func(t *testing.T) {
+		t.Parallel()
+		m := New()
+
+		err := m.AddSyncedFeature(Feature{
+			ID:      "FT-000001",
+			Name:    "",
+			Summary: "Summary",
+		})
+		if !errors.Is(err, ErrEmptyName) {
+			t.Errorf("AddSyncedFeature() error = %v, want ErrEmptyName", err)
+		}
+	})
+
+	t.Run("empty summary", func(t *testing.T) {
+		t.Parallel()
+		m := New()
+
+		err := m.AddSyncedFeature(Feature{
+			ID:      "FT-000001",
+			Name:    "Auth",
+			Summary: "",
+		})
+		if !errors.Is(err, ErrEmptySummary) {
+			t.Errorf("AddSyncedFeature() error = %v, want ErrEmptySummary", err)
+		}
+	})
+
+	t.Run("IsSynced false does not set SyncedAt", func(t *testing.T) {
+		t.Parallel()
+		m := New()
+
+		err := m.AddSyncedFeature(Feature{
+			ID:       "FT-000001",
+			Name:     "Auth",
+			Summary:  "Summary",
+			IsSynced: false,
+		})
+		if err != nil {
+			t.Errorf("AddSyncedFeature() error = %v, want nil", err)
+		}
+
+		entry := m.Features["FT-000001"]
+		if entry.SyncedAt != "" {
+			t.Errorf("entry.SyncedAt = %q, want empty when IsSynced=false", entry.SyncedAt)
+		}
+	})
+}
+
 func TestListFeatures(t *testing.T) {
 	t.Parallel()
 
