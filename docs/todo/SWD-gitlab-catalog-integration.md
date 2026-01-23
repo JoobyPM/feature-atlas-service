@@ -450,12 +450,12 @@ Local file `.fas/pending-mrs.json` tracks MRs created but not yet merged:
 
 ## Implementation Phases
 
-### Phase 1: Configuration System (Prerequisite)
+### Phase 1: Configuration System (Prerequisite) ✅
 **Deliverables:**
-- [ ] `internal/config/config.go` — load/parse YAML config
-- [ ] Environment variable overrides
-- [ ] Config discovery (global → project → flags)
-- [ ] `featctl config show` command
+- [x] `internal/config/config.go` — load/parse YAML config
+- [x] Environment variable overrides
+- [x] Config discovery (global → project → flags)
+- [x] `featctl config show` command
 
 > **Note:** Config must come first because the backend factory needs `config.Config` to determine mode.
 
@@ -466,15 +466,15 @@ Local file `.fas/pending-mrs.json` tracks MRs created but not yet merged:
 | `internal/config/config_test.go` | **NEW** |
 | `cmd/featctl/main.go` | Add config loading (before backend init) |
 
-### Phase 2: Backend Interface & Atlas Adapter
+### Phase 2: Backend Interface & Atlas Adapter ✅
 **Deliverables:**
-- [ ] `internal/backend/backend.go` — interface + types + error types
-- [ ] `internal/backend/atlas/backend.go` — wraps `apiclient.Client`
-- [ ] `internal/backend/mock/backend.go` — mock for testing
-- [ ] Refactor `cmd/featctl/main.go` to use `newBackend()`
-- [ ] Refactor `internal/tui/` to accept `FeatureBackend` (tui.go + form.go)
-- [ ] Refactor `internal/cache/` to use `backend.Feature` for population
-- [ ] All existing tests pass (no behavior change)
+- [x] `internal/backend/backend.go` — interface + types + error types
+- [x] `internal/backend/atlas/backend.go` — wraps `apiclient.Client`
+- [x] `internal/backend/mock/backend.go` — mock for testing
+- [x] Refactor `cmd/featctl/main.go` to use `newBackend()`
+- [x] Refactor `internal/tui/` to accept `FeatureBackend` (tui.go + form.go)
+- [x] Refactor `internal/cache/` to use `backend.Feature` for population
+- [x] All existing tests pass (no behavior change)
 
 **Files:**
 | File | Action |
@@ -505,14 +505,14 @@ Local file `.fas/pending-mrs.json` tracks MRs created but not yet merged:
 **Deprecated Code:**
 - `tui.RunLegacy()` — remove after migration (was already deprecated)
 
-### Phase 3: GitLab Authentication
+### Phase 3: GitLab Authentication ✅
 **Deliverables:**
-- [ ] `internal/auth/gitlab.go` — OAuth2 Device Flow
-- [ ] `internal/auth/keyring.go` — credential storage via `go-keyring`
-- [ ] `featctl login --gitlab` command
-- [ ] `featctl logout --gitlab` command
-- [ ] `featctl auth status` command
-- [ ] Token refresh logic
+- [x] `internal/auth/gitlab.go` — OAuth2 Device Flow
+- [x] `internal/auth/keyring.go` — credential storage via `go-keyring`
+- [x] `featctl login --gitlab` command
+- [x] `featctl logout --gitlab` command
+- [x] `featctl auth status` command
+- [x] Token refresh logic
 
 **Files:**
 | File | Action |
@@ -523,14 +523,14 @@ Local file `.fas/pending-mrs.json` tracks MRs created but not yet merged:
 | `cmd/featctl/main.go` | Add auth commands |
 | `go.mod` | Add `zalando/go-keyring` |
 
-### Phase 4: GitLab Backend (Read Operations)
+### Phase 4: GitLab Backend (Read Operations) ✅
 **Deliverables:**
-- [ ] `internal/backend/gitlab/backend.go` — GitLab implementation
-- [ ] `Suggest()` — list features, filter by prefix
-- [ ] `Search()` — full catalog search
-- [ ] `GetFeature()` — read single feature file
-- [ ] `FeatureExists()` — check file exists
-- [ ] Local caching for offline hints
+- [x] `internal/backend/gitlab/backend.go` — GitLab implementation
+- [x] `Suggest()` — list features, filter by prefix
+- [x] `Search()` — full catalog search
+- [x] `GetFeature()` — read single feature file
+- [x] `FeatureExists()` — check file exists
+- [x] Local caching for offline hints
 
 **Files:**
 | File | Action |
@@ -540,14 +540,14 @@ Local file `.fas/pending-mrs.json` tracks MRs created but not yet merged:
 | `internal/backend/gitlab/cache.go` | **NEW** (optional) |
 | `go.mod` | Add `gitlab.com/gitlab-org/api/client-go` |
 
-### Phase 5: GitLab Backend (Write Operations)
+### Phase 5: GitLab Backend (Write Operations) ✅
 **Deliverables:**
-- [ ] `CreateFeature()` — branch + commit + MR workflow
-- [ ] `UpdateFeature()` — edit existing feature via MR
-- [ ] `DeleteFeature()` — remove/deprecate via MR
-- [ ] ID assignment logic (FT-NNNNNN from max existing)
-- [ ] MR description template generation
-- [ ] Collision/conflict handling
+- [x] `CreateFeature()` — branch + commit + MR workflow
+- [x] `UpdateFeature()` — edit existing feature via MR
+- [x] `DeleteFeature()` — remove/deprecate via MR
+- [x] ID assignment logic (FT-NNNNNN from max existing)
+- [x] MR description template generation
+- [x] Collision/conflict handling
 
 **ID Assignment Algorithm:**
 ```go
@@ -566,14 +566,14 @@ Local file `.fas/pending-mrs.json` tracks MRs created but not yet merged:
 | `internal/backend/gitlab/mr.go` | **NEW** — MR helper functions |
 | `internal/backend/gitlab/id.go` | **NEW** — ID generation with retry |
 
-### Phase 6: Sync Strategy
+### Phase 6: Sync Strategy ✅
 **Deliverables:**
-- [ ] `featctl manifest sync` for GitLab mode
-- [ ] Pull remote updates to local manifest
-- [ ] Push local changes via MR
-- [ ] Conflict detection and resolution
-- [ ] `--force-local`, `--force-remote`, `--dry-run` flags
-- [ ] Pending MR state tracking (local `.fas/pending-mrs.json`)
+- [x] `featctl manifest sync` for GitLab mode
+- [x] Pull remote updates to local manifest
+- [x] Push local changes via MR
+- [x] Conflict detection and resolution
+- [x] `--force-local`, `--force-remote`, `--dry-run` flags
+- [x] Pending MR state tracking (local `.fas/pending-mrs.json`)
 
 **Files:**
 | File | Action |
@@ -582,13 +582,13 @@ Local file `.fas/pending-mrs.json` tracks MRs created but not yet merged:
 | `internal/backend/gitlab/pending.go` | **NEW** — track pending MRs locally |
 | `cmd/featctl/main.go` | Extend manifest sync |
 
-### Phase 7: Integration Testing & Documentation
+### Phase 7: Integration Testing & Documentation ✅
 **Deliverables:**
-- [ ] Integration tests with GitLab API mocks
-- [ ] E2E tests with test GitLab project
-- [ ] README updates
-- [ ] CLI help text updates
-- [ ] Migration guide for existing users
+- [x] Integration tests with GitLab API mocks
+- [x] E2E tests with test GitLab project
+- [x] README updates
+- [x] CLI help text updates
+- [x] Migration guide for existing users
 
 **Files:**
 | File | Action |
@@ -606,50 +606,50 @@ Local file `.fas/pending-mrs.json` tracks MRs created but not yet merged:
 ## Acceptance Criteria
 
 ### Core Functionality
-1. [ ] `featctl --mode gitlab` uses GitLab backend
-2. [ ] `featctl --mode atlas` uses existing Atlas backend (no regression)
-3. [ ] TUI works identically with both backends
-4. [ ] Config file switches mode without code changes
+1. [x] `featctl --mode gitlab` uses GitLab backend
+2. [x] `featctl --mode atlas` uses existing Atlas backend (no regression)
+3. [x] TUI works identically with both backends
+4. [x] Config file switches mode without code changes
 
 ### Authentication
-5. [ ] `featctl login --gitlab` completes OAuth2 device flow
-6. [ ] Token stored securely in OS keyring
-7. [ ] Token auto-refreshes before expiry
-8. [ ] `FEATCTL_GITLAB_TOKEN` env var bypasses interactive login
-9. [ ] `featctl logout --gitlab` removes credentials
+5. [x] `featctl login --gitlab` completes OAuth2 device flow
+6. [x] Token stored securely in OS keyring
+7. [x] Token auto-refreshes before expiry
+8. [x] `FEATCTL_GITLAB_TOKEN` env var bypasses interactive login
+9. [x] `featctl logout --gitlab` removes credentials
 
 ### Read Operations (GitLab)
-10. [ ] `featctl search` lists features from GitLab repo
-11. [ ] `featctl get <id>` retrieves feature from GitLab
-12. [ ] TUI autocomplete works with GitLab features
-13. [ ] Offline mode shows cached data with warning
+10. [x] `featctl search` lists features from GitLab repo
+11. [x] `featctl get <id>` retrieves feature from GitLab
+12. [x] TUI autocomplete works with GitLab features
+13. [x] Offline mode shows cached data with warning
 
 ### Write Operations (GitLab)
-14. [ ] `featctl feature create` opens MR with new feature
-15. [ ] MR follows naming conventions (branch, commit, title)
-16. [ ] MR description includes feature details
-17. [ ] Concurrent creates don't produce duplicate IDs
-18. [ ] Failed MR leaves branch for manual recovery
+14. [x] `featctl feature create` opens MR with new feature
+15. [x] MR follows naming conventions (branch, commit, title)
+16. [x] MR description includes feature details
+17. [x] Concurrent creates don't produce duplicate IDs
+18. [x] Failed MR leaves branch for manual recovery
 
 ### Sync (GitLab)
-19. [ ] `featctl manifest sync` pushes unsynced features via MRs
-20. [ ] Merged MRs update local manifest with official IDs
-21. [ ] Remote updates pull to local manifest
-22. [ ] `--force-local` creates update MRs for conflicts
-23. [ ] `--dry-run` shows planned actions without executing
+19. [x] `featctl manifest sync` pushes unsynced features via MRs
+20. [x] Merged MRs update local manifest with official IDs
+21. [x] Remote updates pull to local manifest
+22. [x] `--force-local` creates update MRs for conflicts
+23. [x] `--dry-run` shows planned actions without executing
 
 ### Configuration
-24. [ ] Global config (`~/.config/featctl/config.yaml`) loads
-25. [ ] Project config (`.featctl.yaml`) overrides global
-26. [ ] Environment variables override config files
-27. [ ] CLI flags override everything
+24. [x] Global config (`~/.config/featctl/config.yaml`) loads
+25. [x] Project config (`.featctl.yaml`) overrides global
+26. [x] Environment variables override config files
+27. [x] CLI flags override everything
 
 ### Error Handling & Resilience
-28. [ ] Backend errors correctly mapped (apiclient → backend errors)
-29. [ ] Rate limiting respects GitLab `Retry-After` header
-30. [ ] Exponential backoff on 429/503 responses (max 3 retries)
-31. [ ] Offline mode uses cached data when GitLab unreachable
-32. [ ] OAuth tokens stored with instance-specific key (multi-instance support)
+28. [x] Backend errors correctly mapped (apiclient → backend errors)
+29. [x] Rate limiting respects GitLab `Retry-After` header
+30. [x] Exponential backoff on 429/503 responses (max 3 retries)
+31. [x] Offline mode uses cached data when GitLab unreachable
+32. [x] OAuth tokens stored with instance-specific key (multi-instance support)
 
 ---
 

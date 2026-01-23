@@ -1,29 +1,73 @@
 # feature-atlas-service
 
-A Go microservice demonstrating **mutual TLS (mTLS)** authentication. This is a PoC for learning how mTLS works: the server requires a client certificate during the TLS handshake, and clients must present valid certificates signed by a trusted CA.
-
-## What is mTLS?
-
-In standard TLS, only the server presents a certificate. In **mutual TLS**, both sides authenticate:
-- The **server** presents its certificate (just like regular HTTPS)
-- The **client** also presents a certificate
-- Both certificates must be signed by a trusted Certificate Authority (CA)
-
-This provides strong authentication at the transport layer, before any application code runs.
+A Go microservice for managing a feature catalog with **dual-mode backend support**:
+- **Atlas Mode**: mTLS-authenticated server with in-memory storage
+- **GitLab Mode**: Git-based feature catalog using GitLab as the backend
 
 ## Features
 
-- **mTLS required**: Server uses `tls.RequireAndVerifyClientCert`
-- **In-memory storage**: Clients and features stored in memory
-- **Certificate-based authorization**: Client fingerprint mapped to user/role
-- **Public API**: Search, suggest, and retrieve features
-- **Admin API**: Register clients, reseed feature catalog
+- **Dual Backend Support**: Switch between Atlas (mTLS server) and GitLab (Git-based catalog)
+- **GitLab Integration**: OAuth2 Device Flow authentication, MR-based feature creation
+- **mTLS Authentication**: Certificate-based client authentication for Atlas mode
 - **Interactive TUI**: Bubble Tea-based terminal UI with autocomplete
-- **Docker support**: Containerized deployment with docker-compose
+- **Local Manifest**: Track features locally with sync to remote
+- **Offline Support**: Work offline with local manifest, sync when connected
+- **Docker Support**: Containerized deployment with docker-compose
 
 ## Quick Start
 
-### 1. Generate Certificates
+### Option A: GitLab Mode (Recommended for teams)
+
+GitLab mode stores features in a GitLab repository as YAML files. Changes are made via merge requests.
+
+**1. Create a configuration file** (`~/.config/featctl/config.yaml`):
+
+```yaml
+mode: gitlab
+gitlab:
+  url: https://gitlab.com
+  project: your-group/feature-catalog
+  main_branch: main
+  mr:
+    labels:
+      - feature
+    remove_source_branch: true
+```
+
+**2. Authenticate with GitLab**:
+
+```bash
+# Interactive OAuth2 Device Flow
+./bin/featctl login
+
+# Or use a Personal Access Token
+./bin/featctl login --token <your-token>
+
+# Or set environment variable (CI/CD)
+export FEATCTL_GITLAB_TOKEN=<your-token>
+```
+
+**3. Use the CLI**:
+
+```bash
+# Search features in GitLab
+./bin/featctl search "keyword"
+
+# Browse features interactively
+./bin/featctl tui
+
+# Create a new feature (opens MR)
+./bin/featctl feature create --id FT-LOCAL-my-feature --name "My Feature" --summary "Description"
+
+# Sync local features to GitLab
+./bin/featctl manifest sync
+```
+
+### Option B: Atlas Mode (mTLS Server)
+
+Atlas mode uses a centralized server with mTLS authentication.
+
+#### 1. Generate Certificates
 
 ```bash
 make certs
@@ -34,7 +78,7 @@ This creates a private CA and certificates for:
 - `admin.crt/key` - Admin client certificate  
 - `alice.crt/key` - Normal user client certificate
 
-### 2. Run the Service
+#### 2. Run the Service
 
 **Option A: Run locally**
 
@@ -92,23 +136,50 @@ curl --cacert certs/ca.crt \
 
 ## CLI Reference
 
-The `featctl` CLI uses mTLS to communicate with the service.
+The `featctl` CLI supports both GitLab and Atlas backends.
 
 ```bash
 featctl [command] [flags]
 
 Commands:
-  me        Show authenticated client information
-  search    Search features in the catalog
-  get       Get a feature by ID
-  tui       Interactive terminal UI for browsing features
-  lint      Validate a YAML file against the feature catalog
+  # Common commands (both modes)
+  search        Search features in the catalog
+  get           Get a feature by ID
+  tui           Interactive terminal UI for browsing features
+  lint          Validate a YAML file against the feature catalog
+  config show   Display current configuration
+
+  # GitLab mode commands
+  login         Authenticate with GitLab (OAuth2 or token)
+  logout        Remove stored GitLab credentials
+  auth status   Show authentication status
+
+  # Manifest commands
+  manifest init     Create a new local manifest
+  manifest list     List features in local manifest
+  manifest add      Add a server feature to local manifest
+  manifest sync     Sync local features with remote
+  manifest pending  Show pending merge requests (GitLab mode)
+
+  # Feature commands
+  feature create    Create a new local feature
+
+  # Atlas mode commands
+  me            Show authenticated client information
 
 Global Flags:
+  --mode    Backend mode: atlas or gitlab (default from config)
+
+Atlas Mode Flags:
   --server  Server URL (default: https://localhost:8443)
   --ca      CA certificate file (default: certs/ca.crt)
   --cert    Client certificate file (default: certs/alice.crt)
   --key     Client private key file (default: certs/alice.key)
+
+Manifest Sync Flags (GitLab mode):
+  --dry-run       Show what would be synced without changes
+  --force-local   Push local changes via MR
+  --force-remote  Overwrite local changes with remote
 ```
 
 ## API Reference
@@ -238,6 +309,53 @@ make clean
 ```
 
 ## Configuration
+
+### featctl Configuration
+
+The CLI supports configuration via YAML file, environment variables, and CLI flags.
+
+**Config file locations** (in order of precedence):
+1. `--config` flag
+2. `.featctl.yaml` in current or parent directories
+3. `~/.config/featctl/config.yaml`
+
+**Full configuration example**:
+
+```yaml
+# Mode: "atlas" or "gitlab"
+mode: gitlab
+
+# GitLab mode configuration
+gitlab:
+  url: https://gitlab.com
+  project: group/feature-catalog
+  main_branch: main
+  # token: set via env var or login command
+  mr:
+    labels:
+      - feature
+    remove_source_branch: true
+    default_assignee: username
+
+# Atlas mode configuration
+atlas:
+  server: https://localhost:8443
+  ca_cert: certs/ca.crt
+  client_cert: certs/alice.crt
+  client_key: certs/alice.key
+```
+
+**Environment variables**:
+
+| Variable | Description |
+|----------|-------------|
+| `FEATCTL_MODE` | Backend mode (`atlas` or `gitlab`) |
+| `FEATCTL_GITLAB_URL` | GitLab instance URL |
+| `FEATCTL_GITLAB_TOKEN` | GitLab access token |
+| `FEATCTL_GITLAB_PROJECT` | GitLab project path |
+| `FEATCTL_ATLAS_SERVER` | Atlas server URL |
+
+### feature-atlasd Configuration
 
 Command-line flags for `feature-atlasd`:
 
