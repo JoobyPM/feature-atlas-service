@@ -42,6 +42,12 @@ func (b *Backend) Mode() string {
 	return backend.ModeAtlas
 }
 
+// InstanceID returns a unique identifier for this backend instance.
+// Format: "atlas:<server-url>"
+func (b *Backend) InstanceID() string {
+	return "atlas:" + b.client.BaseURL
+}
+
 // Suggest returns autocomplete suggestions for the given query.
 func (b *Backend) Suggest(ctx context.Context, query string, limit int) ([]backend.SuggestItem, error) {
 	items, err := b.client.Suggest(ctx, query, limit)

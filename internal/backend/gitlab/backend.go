@@ -109,6 +109,12 @@ func (b *Backend) Mode() string {
 	return backend.ModeGitLab
 }
 
+// InstanceID returns a unique identifier for this backend instance.
+// Format: "gitlab:<instance>/<project>"
+func (b *Backend) InstanceID() string {
+	return fmt.Sprintf("gitlab:%s/%s", b.instanceURL, b.project)
+}
+
 // Suggest returns autocomplete suggestions for the given query.
 func (b *Backend) Suggest(ctx context.Context, query string, limit int) ([]backend.SuggestItem, error) {
 	features, err := b.loadFeatures(ctx)
@@ -135,13 +141,16 @@ func (b *Backend) GetFeature(ctx context.Context, id string) (*backend.Feature, 
 		return nil, backend.ErrInvalidID
 	}
 
-	// First check cache
+	// First check cache - return a copy to prevent mutation of cached data
 	b.mu.RLock()
 	if b.cacheLoaded {
 		for _, f := range b.cachedFeatures {
 			if f.ID == id {
+				// Make a copy to prevent callers from mutating cache
+				featureCopy := f
+				featureCopy.Tags = append([]string(nil), f.Tags...)
 				b.mu.RUnlock()
-				return &f, nil
+				return &featureCopy, nil
 			}
 		}
 	}

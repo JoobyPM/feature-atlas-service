@@ -55,8 +55,8 @@ func TestBranchName(t *testing.T) {
 		hasRand bool
 	}{
 		{OpCreate, "feature/add-authentication-flow-", "", true},
-		{OpUpdate, "feature/update-FT-000001-authentication-flow", "", false},
-		{OpDelete, "feature/delete-FT-000001", "", false},
+		{OpUpdate, "feature/update-FT-000001-authentication-flow-", "", true},
+		{OpDelete, "feature/delete-FT-000001-", "", true},
 	}
 
 	for _, tt := range tests {

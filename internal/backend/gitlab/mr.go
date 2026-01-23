@@ -54,6 +54,8 @@ func randomSuffix() string {
 }
 
 // BranchName generates a branch name for the given operation.
+// All branch names include a random suffix to prevent collisions when
+// multiple updates to the same feature are in progress.
 func BranchName(op string, feature *backend.Feature) string {
 	slug := slugify(feature.Name)
 	if slug == "" {
@@ -64,9 +66,9 @@ func BranchName(op string, feature *backend.Feature) string {
 	case OpCreate:
 		return fmt.Sprintf("feature/add-%s-%s", slug, randomSuffix())
 	case OpUpdate:
-		return fmt.Sprintf("feature/update-%s-%s", feature.ID, slug)
+		return fmt.Sprintf("feature/update-%s-%s-%s", feature.ID, slug, randomSuffix())
 	case OpDelete:
-		return "feature/delete-" + feature.ID
+		return fmt.Sprintf("feature/delete-%s-%s", feature.ID, randomSuffix())
 	default:
 		return fmt.Sprintf("feature/%s-%s-%s", op, slug, randomSuffix())
 	}

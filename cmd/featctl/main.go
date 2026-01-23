@@ -499,17 +499,43 @@ func syncAfterTUI(mPath string) error {
 
 	fmt.Printf("\nSyncing %d feature(s) to server...\n", len(ids))
 
+	// Use activeBackend if available, otherwise fall back to legacy client
+	useBackend := activeBackend != nil
+
 	var synced, failed int
 	for _, localID := range ids {
 		entry := unsynced[localID]
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		feature, createErr := client.CreateFeature(ctx, apiclient.CreateFeatureRequest{
-			Name:    entry.Name,
-			Summary: entry.Summary,
-			Owner:   entry.Owner,
-			Tags:    entry.Tags,
-		})
+		var feature *backend.Feature
+		var createErr error
+
+		if useBackend {
+			feature, createErr = activeBackend.CreateFeature(ctx, backend.Feature{
+				Name:    entry.Name,
+				Summary: entry.Summary,
+				Owner:   entry.Owner,
+				Tags:    entry.Tags,
+			})
+		} else {
+			// Legacy path for backward compatibility
+			var apiFeature *apiclient.Feature
+			apiFeature, createErr = client.CreateFeature(ctx, apiclient.CreateFeatureRequest{
+				Name:    entry.Name,
+				Summary: entry.Summary,
+				Owner:   entry.Owner,
+				Tags:    entry.Tags,
+			})
+			if apiFeature != nil {
+				feature = &backend.Feature{
+					ID:      apiFeature.ID,
+					Name:    apiFeature.Name,
+					Summary: apiFeature.Summary,
+					Owner:   apiFeature.Owner,
+					Tags:    apiFeature.Tags,
+				}
+			}
+		}
 		cancel()
 
 		if createErr != nil {
@@ -1049,21 +1075,23 @@ func syncGitLab() error {
 	// Convert manifest features to LocalFeature map
 	localFeatures := make(map[string]gitlabbackend.LocalFeature)
 	for id, entry := range m.Features {
-		var syncedAt, updatedAt time.Time
+		var syncedAt time.Time
 		if entry.SyncedAt != "" {
 			parsed, parseErr := time.Parse(time.RFC3339, entry.SyncedAt)
 			if parseErr == nil {
 				syncedAt = parsed
 			}
 		}
+		// Note: LocalFeature.UpdatedAt is left as zero since manifest.Entry doesn't track
+		// local modification time. The sync logic uses SyncedAt for comparison with remote.
 		localFeatures[id] = gitlabbackend.LocalFeature{
-			Name:      entry.Name,
-			Summary:   entry.Summary,
-			Owner:     entry.Owner,
-			Tags:      entry.Tags,
-			Synced:    entry.Synced,
-			SyncedAt:  syncedAt,
-			UpdatedAt: updatedAt,
+			Name:     entry.Name,
+			Summary:  entry.Summary,
+			Owner:    entry.Owner,
+			Tags:     entry.Tags,
+			Synced:   entry.Synced,
+			SyncedAt: syncedAt,
+			// UpdatedAt intentionally omitted (zero value) - manifest doesn't track local edits
 		}
 	}
 

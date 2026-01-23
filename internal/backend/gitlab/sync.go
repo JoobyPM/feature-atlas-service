@@ -401,9 +401,11 @@ func tagsEqual(a, b []string) bool {
 }
 
 // hasRemoteChanges checks if remote was updated after local sync.
+// If local has never been synced (SyncedAt.IsZero()), we consider the remote
+// as having changes that need to be pulled.
 func hasRemoteChanges(local LocalFeature, remote backend.Feature) bool {
 	if local.SyncedAt.IsZero() {
-		return false
+		return true // Never synced means remote is considered newer
 	}
 	return remote.UpdatedAt.After(local.SyncedAt)
 }

@@ -18,6 +18,7 @@ type Backend struct {
 	features map[string]backend.Feature
 	authInfo *backend.AuthInfo
 	mode     string
+	nextID   int // Monotonically increasing counter for unique ID generation
 
 	// Test hooks - set these to inject errors or custom behavior
 	SuggestFunc       func(ctx context.Context, query string, limit int) ([]backend.SuggestItem, error)
@@ -68,6 +69,7 @@ var _ backend.FeatureBackend = (*Backend)(nil)
 func New() *Backend {
 	return &Backend{
 		features: make(map[string]backend.Feature),
+		nextID:   1,
 		authInfo: &backend.AuthInfo{
 			Username:    "test-user",
 			DisplayName: "Test User",
@@ -89,6 +91,12 @@ func (b *Backend) Mode() string {
 	return b.mode
 }
 
+// InstanceID returns a unique identifier for this backend instance.
+// Format: "<mode>:mock"
+func (b *Backend) InstanceID() string {
+	return b.mode + ":mock"
+}
+
 // AddFeature adds a feature to the mock store.
 func (b *Backend) AddFeature(f backend.Feature) {
 	b.mu.Lock()
@@ -107,6 +115,8 @@ func (b *Backend) AddFeatures(features []backend.Feature) {
 
 // SetAuthInfo sets the auth info returned by GetAuthInfo.
 func (b *Backend) SetAuthInfo(info *backend.AuthInfo) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	b.authInfo = info
 }
 
@@ -222,12 +232,19 @@ func (b *Backend) CreateFeature(ctx context.Context, feature backend.Feature) (*
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	// Assign ID if not provided
+	// Assign ID if not provided using monotonically increasing counter
 	if feature.ID == "" {
-		feature.ID = generateID(len(b.features) + 1)
+		for {
+			feature.ID = generateID(b.nextID)
+			b.nextID++
+			// Ensure no collision even after deletions
+			if _, exists := b.features[feature.ID]; !exists {
+				break
+			}
+		}
 	}
 
-	// Check for duplicate
+	// Check for duplicate (when ID was explicitly provided)
 	if _, exists := b.features[feature.ID]; exists {
 		return nil, backend.ErrAlreadyExists
 	}
@@ -304,6 +321,8 @@ func (b *Backend) GetAuthInfo(ctx context.Context) (*backend.AuthInfo, error) {
 	if b.GetAuthInfoFunc != nil {
 		return b.GetAuthInfoFunc(ctx)
 	}
+	b.mu.RLock()
+	defer b.mu.RUnlock()
 	return b.authInfo, nil
 }
 

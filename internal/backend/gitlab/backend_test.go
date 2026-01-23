@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gitlab.com/gitlab-org/api/client-go"
 
 	"github.com/JoobyPM/feature-atlas-service/internal/backend"
 )
@@ -419,39 +420,23 @@ func TestBackendMode(t *testing.T) {
 
 func TestAccessLevelToRole(t *testing.T) {
 	tests := []struct {
-		level int
+		name  string
+		level gitlab.AccessLevelValue
 		want  string
 	}{
-		{50, "owner"},
-		{40, "maintainer"},
-		{30, "developer"},
-		{20, "reporter"},
-		{10, "guest"},
-		{0, "unknown"},
-		{99, "unknown"},
+		{"owner", gitlab.OwnerPermissions, "owner"},
+		{"maintainer", gitlab.MaintainerPermissions, "maintainer"},
+		{"developer", gitlab.DeveloperPermissions, "developer"},
+		{"reporter", gitlab.ReporterPermissions, "reporter"},
+		{"guest", gitlab.GuestPermissions, "guest"},
+		{"none", gitlab.NoPermissions, "none"},
+		{"unknown", gitlab.AccessLevelValue(99), "unknown"},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.want, func(_ *testing.T) {
-			// Use the gitlab access level values
-			var level int
-			switch tt.level {
-			case 50:
-				level = 50 // Owner
-			case 40:
-				level = 40 // Maintainer
-			case 30:
-				level = 30 // Developer
-			case 20:
-				level = 20 // Reporter
-			case 10:
-				level = 10 // Guest
-			default:
-				level = tt.level
-			}
-			// We can't easily test accessLevelToRole without the gitlab types
-			// but the function is simple enough that we trust it works
-			_ = level
+		t.Run(tt.name, func(t *testing.T) {
+			got := accessLevelToRole(tt.level)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

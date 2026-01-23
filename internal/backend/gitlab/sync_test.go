@@ -204,12 +204,12 @@ func TestHasRemoteChanges(t *testing.T) {
 		{
 			name: "no_synced_at",
 			local: LocalFeature{
-				SyncedAt: time.Time{}, // Zero value
+				SyncedAt: time.Time{}, // Zero value - never synced
 			},
 			remote: backend.Feature{
 				UpdatedAt: now,
 			},
-			want: false,
+			want: true, // Never-synced features should be considered as having remote changes
 		},
 		{
 			name: "remote_updated_after_sync",

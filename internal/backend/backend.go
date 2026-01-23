@@ -62,6 +62,10 @@ type FeatureBackend interface {
 
 	// Info
 	Mode() string // Returns "atlas" or "gitlab"
+	// InstanceID returns a unique identifier for this backend instance.
+	// Used for cache isolation when multiple instances of the same backend type exist.
+	// Format: "<mode>:<instance-specific-identifier>" (e.g., "gitlab:gitlab.com/org/project")
+	InstanceID() string
 	GetAuthInfo(ctx context.Context) (*AuthInfo, error)
 }
 

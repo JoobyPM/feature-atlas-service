@@ -43,7 +43,8 @@ var (
 )
 
 // pendingMRsPath returns the path to the pending MRs file.
-// Creates the directory if it doesn't exist.
+// Note: This function only computes the path and does not create directories.
+// Directory creation is handled by Save() when persisting the file.
 func pendingMRsPath() (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -206,8 +207,11 @@ func (p *PendingMRs) List() []PendingMR {
 // trackPendingMR adds an MR to the pending list.
 // This is called after successful MR creation to track the pending state.
 func trackPendingMR(feature *backend.Feature, mrInfo *MRInfo, operation string) error {
-	if feature == nil || mrInfo == nil {
-		return nil
+	if feature == nil {
+		return errors.New("trackPendingMR: feature is nil")
+	}
+	if mrInfo == nil {
+		return fmt.Errorf("trackPendingMR: mrInfo is nil for feature %s", feature.ID)
 	}
 
 	pending, err := LoadPendingMRs()

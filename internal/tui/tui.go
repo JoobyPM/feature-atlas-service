@@ -918,10 +918,10 @@ func (m Model) refreshCacheCmd() tea.Cmd {
 		}
 
 		// Mark incomplete if we hit limit (server may have more features)
-		// Use mode as the "server URL" for cache isolation
+		// Use InstanceID for cache isolation across different backend instances
 		return cacheRefreshResultMsg{
 			features:  allFeatures,
-			serverURL: backendRef.Mode(),
+			serverURL: backendRef.InstanceID(),
 			complete:  len(features) < cacheRefreshLimit,
 		}
 	}
