@@ -127,7 +127,7 @@ var (
 
 **OAuth2 Device Flow:**
 1. POST `/oauth/authorize_device` with `client_id` from config
-2. Display: "Go to https://gitlab.com/oauth/device and enter code XXXX"
+2. Display: "Go to <https://gitlab.com/oauth/device> and enter code XXXX"
 3. Poll `/oauth/token` every 5s until approved
 4. Store in OS keyring (keyed by instance URL)
 5. Auto-refresh when <5min remaining
@@ -231,6 +231,7 @@ Errors mapped correctly • Rate limit respects Retry-After • Exponential back
 - **GitLab version:** ≥17.2 required for OAuth2 Device Flow (fallback: `--token` flag)
 
 ### CLI Flags (New)
+
 | Flag | Description |
 |------|-------------|
 | `--mode` | Backend: `atlas` or `gitlab` |

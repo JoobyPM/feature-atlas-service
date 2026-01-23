@@ -428,7 +428,7 @@ func (b *Backend) ExecuteAction(ctx context.Context, action SyncAction) error {
 		// These actions don't require backend execution
 		return nil
 	default:
-		return nil
+		return fmt.Errorf("unknown sync action type: %d", action.Type)
 	}
 }
 
