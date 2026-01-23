@@ -36,10 +36,17 @@ func TestRandomSuffix(t *testing.T) {
 	// Should return 4-character hex string
 	suffix := randomSuffix()
 	assert.Len(t, suffix, 4)
+	assert.Regexp(t, "^[0-9a-f]{4}$", suffix)
 
-	// Should be different each time (with high probability)
-	suffix2 := randomSuffix()
-	assert.NotEqual(t, suffix, suffix2)
+	// Avoid rare flakes: try a few times to see a different suffix
+	different := false
+	for range 5 {
+		if randomSuffix() != suffix {
+			different = true
+			break
+		}
+	}
+	assert.True(t, different, "expected a different suffix over several attempts")
 }
 
 func TestBranchName(t *testing.T) {

@@ -141,7 +141,8 @@ func (b *Backend) Suggest(ctx context.Context, query string, limit int) ([]backe
 				Name:    f.Name,
 				Summary: f.Summary,
 			})
-			if len(items) >= limit {
+			// Only apply limit if positive (limit <= 0 means no limit)
+			if limit > 0 && len(items) >= limit {
 				break
 			}
 		}
@@ -166,7 +167,8 @@ func (b *Backend) Search(ctx context.Context, query string, limit int) ([]backen
 	for _, f := range b.features {
 		if matchesQuery(f, query) {
 			features = append(features, f)
-			if len(features) >= limit {
+			// Only apply limit if positive (limit <= 0 means no limit)
+			if limit > 0 && len(features) >= limit {
 				break
 			}
 		}

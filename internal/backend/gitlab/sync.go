@@ -5,9 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
-	"gitlab.com/gitlab-org/api/client-go"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 
 	"github.com/JoobyPM/feature-atlas-service/internal/backend"
 )
@@ -380,24 +381,17 @@ func hasLocalChanges(local LocalFeature, remote backend.Feature) bool {
 }
 
 // tagsEqual compares two tag slices for equality (order-independent).
+// Handles duplicates correctly by sorting and comparing element-by-element.
 func tagsEqual(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	// For small slices, O(n²) is fine. For large slices, consider sorting.
-	for _, tag := range a {
-		found := false
-		for _, other := range b {
-			if tag == other {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-	return true
+	// Sort copies to compare (order-independent equality with duplicates handled)
+	aCopy := slices.Clone(a)
+	bCopy := slices.Clone(b)
+	slices.Sort(aCopy)
+	slices.Sort(bCopy)
+	return slices.Equal(aCopy, bCopy)
 }
 
 // hasRemoteChanges checks if remote was updated after local sync.

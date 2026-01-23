@@ -20,7 +20,8 @@ Implement dual-mode backend for `featctl` per `docs/todo/SWD-gitlab-catalog-inte
 - `test/integration/api_test.go` — integration test structure (reference)
 
 ### Architecture
-```
+
+```text
         CLI / TUI (uses FeatureBackend)
                     │
         ┌───────────┴───────────┐
@@ -62,7 +63,8 @@ Execute sequentially. Each phase must pass `make check` before proceeding.
 - `internal/cache/cache.go` — use `backend.Feature`
 - `internal/cache/cache_test.go` — update tests for new population logic
 
-**Interface:**
+#### Interface
+
 ```go
 import ("context"; "errors"; "time")
 
@@ -98,9 +100,11 @@ var (
 )
 ```
 
-**Atlas notes:** `UpdateFeature()`/`DeleteFeature()` return `ErrNotSupported`.
+#### Atlas Notes
 
-**Refactoring:**
+`UpdateFeature()`/`DeleteFeature()` return `ErrNotSupported`.
+
+#### Refactoring
 - `var client *apiclient.Client` → `var activeBackend backend.FeatureBackend`
 - `initClient()` → `initBackend()` using factory
 - All `client.Xxx()` → `activeBackend.Xxx()`
@@ -238,7 +242,8 @@ Errors mapped correctly • Rate limit respects Retry-After • Exponential back
 ---
 
 ## Workflow
-```
+
+```text
 1. EXPLORE — Read existing code (apiclient, tui, manifest, tests).
 2. PLAN — Review interface in todo doc. Identify all file changes.
 3. CODE — One phase at a time. Tests alongside. `make check` after each file.
