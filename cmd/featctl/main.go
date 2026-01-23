@@ -242,21 +242,20 @@ var meCmd = &cobra.Command{
 	Use:   "me",
 	Short: "Show authenticated client information",
 	PreRunE: func(_ *cobra.Command, _ []string) error {
-		return initClient()
+		return initBackend()
 	},
 	RunE: func(_ *cobra.Command, _ []string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		info, err := client.Me(ctx)
+		info, err := activeBackend.GetAuthInfo(ctx)
 		if err != nil {
 			return err
 		}
 
-		fmt.Printf("Name:        %s\n", info.Name)
+		fmt.Printf("Username:    %s\n", info.Username)
+		fmt.Printf("DisplayName: %s\n", info.DisplayName)
 		fmt.Printf("Role:        %s\n", info.Role)
-		fmt.Printf("Fingerprint: %s\n", info.Fingerprint)
-		fmt.Printf("Subject:     %s\n", info.Subject)
 		return nil
 	},
 }
@@ -266,7 +265,7 @@ var searchCmd = &cobra.Command{
 	Short: "Search features in the catalog",
 	Args:  cobra.MaximumNArgs(1),
 	PreRunE: func(_ *cobra.Command, _ []string) error {
-		return initClient()
+		return initBackend()
 	},
 	RunE: func(_ *cobra.Command, args []string) error {
 		query := ""
@@ -277,7 +276,7 @@ var searchCmd = &cobra.Command{
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		features, err := client.Search(ctx, query, searchLimit)
+		features, err := activeBackend.Search(ctx, query, searchLimit)
 		if err != nil {
 			return err
 		}
@@ -582,15 +581,15 @@ var getCmd = &cobra.Command{
 	Short: "Get a feature by ID",
 	Args:  cobra.ExactArgs(1),
 	PreRunE: func(_ *cobra.Command, _ []string) error {
-		return initClient()
+		return initBackend()
 	},
 	RunE: func(_ *cobra.Command, args []string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		feature, err := client.GetFeature(ctx, args[0])
+		feature, err := activeBackend.GetFeature(ctx, args[0])
 		if err != nil {
-			if errors.Is(err, apiclient.ErrFeatureNotFound) {
+			if errors.Is(err, backend.ErrNotFound) {
 				return fmt.Errorf("feature not found: %s", args[0])
 			}
 			return err
@@ -834,10 +833,10 @@ var manifestAddCmd = &cobra.Command{
 This allows offline validation of existing server features.
 
 The feature ID must be a valid server ID format (FT-NNNNNN).
-Requires mTLS connection to the server.`,
+Requires connection to the backend (Atlas mTLS or GitLab).`,
 	Args: cobra.ExactArgs(1),
 	PreRunE: func(_ *cobra.Command, _ []string) error {
-		return initClient()
+		return initBackend()
 	},
 	RunE: func(_ *cobra.Command, args []string) error {
 		targetID := args[0]
@@ -876,13 +875,13 @@ Requires mTLS connection to the server.`,
 			return nil
 		}
 
-		// Fetch from server
+		// Fetch from backend
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		feature, err := client.GetFeature(ctx, targetID)
+		feature, err := activeBackend.GetFeature(ctx, targetID)
 		if err != nil {
-			if errors.Is(err, apiclient.ErrFeatureNotFound) {
+			if errors.Is(err, backend.ErrNotFound) {
 				fmt.Fprintf(os.Stderr, "Error: feature not found on server: %s\n", targetID)
 				return exitErr(exitValidation, "feature not found")
 			}
