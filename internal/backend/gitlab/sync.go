@@ -76,20 +76,33 @@ func (b *Backend) CheckMRStatus(ctx context.Context, mrIID int) (MRState, *gitla
 
 // GetMergedMRFeatureID extracts the server-assigned feature ID from a merged MR.
 // It parses the MR diffs to find the feature file path.
+// Note: MR diffs are paginated (default 20/page), so we iterate all pages.
 func (b *Backend) GetMergedMRFeatureID(ctx context.Context, mr *gitlab.MergeRequest) (string, error) {
-	// Get the list of diffs in the MR
-	opts := &gitlab.ListMergeRequestDiffsOptions{}
-	diffs, resp, err := b.client.MergeRequests.ListMergeRequestDiffs(b.project, mr.IID, opts, gitlab.WithContext(ctx))
-	if err != nil {
-		return "", mapError(resp, err)
+	// Set up pagination options - use 100 per page for efficiency
+	opts := &gitlab.ListMergeRequestDiffsOptions{
+		ListOptions: gitlab.ListOptions{PerPage: 100, Page: 1},
 	}
 
-	// Look for a feature file in the diffs
-	for _, diff := range diffs {
-		id := FeatureIDFromPath(diff.NewPath)
-		if id != "" && !IsLocalID(id) {
-			return id, nil
+	// Iterate through all pages of diffs
+	for {
+		diffs, resp, err := b.client.MergeRequests.ListMergeRequestDiffs(b.project, mr.IID, opts, gitlab.WithContext(ctx))
+		if err != nil {
+			return "", mapError(resp, err)
 		}
+
+		// Look for a feature file in the diffs
+		for _, diff := range diffs {
+			id := FeatureIDFromPath(diff.NewPath)
+			if id != "" && !IsLocalID(id) {
+				return id, nil
+			}
+		}
+
+		// Check if there are more pages
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
 	}
 
 	return "", errors.New("no feature ID found in MR diffs")
