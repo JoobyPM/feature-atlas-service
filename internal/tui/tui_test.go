@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/JoobyPM/feature-atlas-service/internal/apiclient"
+	"github.com/JoobyPM/feature-atlas-service/internal/backend"
 )
 
 // updateModel is a helper that handles the Update return type.
@@ -18,7 +18,7 @@ func updateModel(m Model, msg tea.Msg) (Model, tea.Cmd) {
 }
 
 // loadTestItems loads test items into the model via suggestionsMsg.
-func loadTestItems(m Model, items []apiclient.SuggestItem) Model {
+func loadTestItems(m Model, items []backend.SuggestItem) Model {
 	m, _ = updateModel(m, suggestionsMsg{items: items})
 	return m
 }
@@ -32,7 +32,7 @@ func isSelected(m Model, id string) bool {
 // TestModel_SelectToggle verifies Space key toggles selection.
 func TestModel_SelectToggle(t *testing.T) {
 	model := New(nil, Options{})
-	model = loadTestItems(model, []apiclient.SuggestItem{
+	model = loadTestItems(model, []backend.SuggestItem{
 		{ID: "FT-000001", Name: "Feature 1", Summary: "First feature"},
 		{ID: "FT-000002", Name: "Feature 2", Summary: "Second feature"},
 	})
@@ -58,7 +58,7 @@ func TestModel_SelectToggle(t *testing.T) {
 // TestModel_SelectAll verifies Ctrl+A key selects all visible items.
 func TestModel_SelectAll(t *testing.T) {
 	model := New(nil, Options{})
-	model = loadTestItems(model, []apiclient.SuggestItem{
+	model = loadTestItems(model, []backend.SuggestItem{
 		{ID: "FT-000001", Name: "Feature 1", Summary: "First"},
 		{ID: "FT-000002", Name: "Feature 2", Summary: "Second"},
 		{ID: "FT-000003", Name: "Feature 3", Summary: "Third"},
@@ -76,7 +76,7 @@ func TestModel_SelectAll(t *testing.T) {
 // TestModel_DeselectAll verifies Ctrl+N key deselects all items.
 func TestModel_DeselectAll(t *testing.T) {
 	model := New(nil, Options{})
-	model = loadTestItems(model, []apiclient.SuggestItem{
+	model = loadTestItems(model, []backend.SuggestItem{
 		{ID: "FT-000001", Name: "Feature 1", Summary: "First"},
 		{ID: "FT-000002", Name: "Feature 2", Summary: "Second"},
 	})
@@ -94,7 +94,7 @@ func TestModel_DeselectAll(t *testing.T) {
 // TestModel_Navigation verifies arrow key navigation.
 func TestModel_Navigation(t *testing.T) {
 	model := New(nil, Options{})
-	model = loadTestItems(model, []apiclient.SuggestItem{
+	model = loadTestItems(model, []backend.SuggestItem{
 		{ID: "FT-000001", Name: "Feature 1", Summary: "First"},
 		{ID: "FT-000002", Name: "Feature 2", Summary: "Second"},
 		{ID: "FT-000003", Name: "Feature 3", Summary: "Third"},
@@ -127,7 +127,7 @@ func TestModel_Navigation(t *testing.T) {
 // TestModel_TypingJK verifies j/k always go to search (not navigation).
 func TestModel_TypingJK(t *testing.T) {
 	model := New(nil, Options{})
-	model = loadTestItems(model, []apiclient.SuggestItem{
+	model = loadTestItems(model, []backend.SuggestItem{
 		{ID: "FT-000001", Name: "Feature 1", Summary: "First"},
 		{ID: "FT-000002", Name: "Feature 2", Summary: "Second"},
 	})
@@ -151,7 +151,7 @@ func TestModel_TypingJK(t *testing.T) {
 // TestModel_EnterShowsConfirm verifies Enter shows confirmation dialog.
 func TestModel_EnterShowsConfirm(t *testing.T) {
 	model := New(nil, Options{})
-	model = loadTestItems(model, []apiclient.SuggestItem{
+	model = loadTestItems(model, []backend.SuggestItem{
 		{ID: "FT-000001", Name: "Feature 1", Summary: "First"},
 	})
 
@@ -168,7 +168,7 @@ func TestModel_EnterShowsConfirm(t *testing.T) {
 // TestModel_EnterNoSelection verifies Enter selects current if nothing selected.
 func TestModel_EnterNoSelection(t *testing.T) {
 	model := New(nil, Options{})
-	model = loadTestItems(model, []apiclient.SuggestItem{
+	model = loadTestItems(model, []backend.SuggestItem{
 		{ID: "FT-000001", Name: "Feature 1", Summary: "First"},
 	})
 
@@ -182,7 +182,7 @@ func TestModel_EnterNoSelection(t *testing.T) {
 // TestModel_ConfirmYes verifies 'Y' in confirm mode accepts selection.
 func TestModel_ConfirmYes(t *testing.T) {
 	model := New(nil, Options{})
-	model = loadTestItems(model, []apiclient.SuggestItem{
+	model = loadTestItems(model, []backend.SuggestItem{
 		{ID: "FT-000001", Name: "Feature 1", Summary: "First"},
 	})
 
@@ -201,7 +201,7 @@ func TestModel_ConfirmYes(t *testing.T) {
 // TestModel_ConfirmSync verifies 'S' in confirm mode sets sync flag.
 func TestModel_ConfirmSync(t *testing.T) {
 	model := New(nil, Options{})
-	model = loadTestItems(model, []apiclient.SuggestItem{
+	model = loadTestItems(model, []backend.SuggestItem{
 		{ID: "FT-000001", Name: "Feature 1", Summary: "First"},
 	})
 
@@ -220,7 +220,7 @@ func TestModel_ConfirmSync(t *testing.T) {
 // TestModel_ConfirmNo verifies 'N' in confirm mode cancels back to search.
 func TestModel_ConfirmNo(t *testing.T) {
 	model := New(nil, Options{})
-	model = loadTestItems(model, []apiclient.SuggestItem{
+	model = loadTestItems(model, []backend.SuggestItem{
 		{ID: "FT-000001", Name: "Feature 1", Summary: "First"},
 	})
 
@@ -257,7 +257,7 @@ func TestModel_FeatureStatus(t *testing.T) {
 // TestModel_SyncFlagSkipsConfirm verifies --sync flag skips confirmation.
 func TestModel_SyncFlagSkipsConfirm(t *testing.T) {
 	model := New(nil, Options{SyncFlag: true})
-	model = loadTestItems(model, []apiclient.SuggestItem{
+	model = loadTestItems(model, []backend.SuggestItem{
 		{ID: "FT-000001", Name: "Feature 1", Summary: "First"},
 	})
 
@@ -351,7 +351,7 @@ func TestModel_ViewSearch(t *testing.T) {
 	model := New(nil, Options{
 		ManifestFeatures: map[string]bool{"FT-000001": true},
 	})
-	model = loadTestItems(model, []apiclient.SuggestItem{
+	model = loadTestItems(model, []backend.SuggestItem{
 		{ID: "FT-000001", Name: "In Manifest", Summary: "Already in manifest"},
 		{ID: "FT-000002", Name: "On Server", Summary: "Only on server"},
 	})
@@ -369,7 +369,7 @@ func TestModel_SelectionPersistsAcrossSearchChanges(t *testing.T) {
 	model := New(nil, Options{})
 
 	// Initial items
-	model = loadTestItems(model, []apiclient.SuggestItem{
+	model = loadTestItems(model, []backend.SuggestItem{
 		{ID: "FT-000001", Name: "Feature 1", Summary: "First"},
 		{ID: "FT-000002", Name: "Feature 2", Summary: "Second"},
 	})
@@ -384,7 +384,7 @@ func TestModel_SelectionPersistsAcrossSearchChanges(t *testing.T) {
 	assert.True(t, isSelected(model, "FT-000002"), "FT-000002 should be selected")
 
 	// Simulate new search results (different items)
-	model = loadTestItems(model, []apiclient.SuggestItem{
+	model = loadTestItems(model, []backend.SuggestItem{
 		{ID: "FT-000003", Name: "Feature 3", Summary: "Third"},
 		{ID: "FT-000004", Name: "Feature 4", Summary: "Fourth"},
 	})
@@ -412,14 +412,14 @@ func TestModel_ConfirmIncludesAllSelected(t *testing.T) {
 	model := New(nil, Options{})
 
 	// Load items and select some
-	model = loadTestItems(model, []apiclient.SuggestItem{
+	model = loadTestItems(model, []backend.SuggestItem{
 		{ID: "FT-000001", Name: "Feature 1", Summary: "First"},
 		{ID: "FT-000002", Name: "Feature 2", Summary: "Second"},
 	})
 	model, _ = updateModel(model, tea.KeyMsg{Type: tea.KeyCtrlA}) // Select all
 
 	// Change search results (simulate search)
-	model = loadTestItems(model, []apiclient.SuggestItem{
+	model = loadTestItems(model, []backend.SuggestItem{
 		{ID: "FT-000003", Name: "Feature 3", Summary: "Third"},
 	})
 
@@ -437,9 +437,9 @@ func TestModel_ScrollIndicators(t *testing.T) {
 	model := New(nil, Options{})
 
 	// Load more items than visible
-	items := make([]apiclient.SuggestItem, 15)
+	items := make([]backend.SuggestItem, 15)
 	for i := range items {
-		items[i] = apiclient.SuggestItem{
+		items[i] = backend.SuggestItem{
 			ID:      fmt.Sprintf("FT-%06d", i+1),
 			Name:    fmt.Sprintf("Feature %d", i+1),
 			Summary: fmt.Sprintf("Summary %d", i+1),
@@ -521,7 +521,7 @@ func TestFeatureItem_Status(t *testing.T) {
 		ManifestFeatures: map[string]bool{"FT-000001": true},
 		LocalFeatures:    map[string]bool{"FT-LOCAL-test": true},
 	})
-	model = loadTestItems(model, []apiclient.SuggestItem{
+	model = loadTestItems(model, []backend.SuggestItem{
 		{ID: "FT-000001", Name: "Synced", Summary: "In manifest"},
 		{ID: "FT-000002", Name: "Server Only", Summary: "On server"},
 		{ID: "FT-LOCAL-test", Name: "Local", Summary: "Local only"},
@@ -536,7 +536,7 @@ func TestFeatureItem_Status(t *testing.T) {
 // TestModel_NKeyOpensCreateForm verifies 'n' key opens the create form.
 func TestModel_NKeyOpensCreateForm(t *testing.T) {
 	model := New(nil, Options{})
-	model = loadTestItems(model, []apiclient.SuggestItem{
+	model = loadTestItems(model, []backend.SuggestItem{
 		{ID: "FT-000001", Name: "Feature 1", Summary: "First"},
 	})
 

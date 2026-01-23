@@ -12,7 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/JoobyPM/feature-atlas-service/internal/apiclient"
+	"github.com/JoobyPM/feature-atlas-service/internal/backend"
 	"github.com/JoobyPM/feature-atlas-service/internal/cache"
 	"github.com/JoobyPM/feature-atlas-service/internal/manifest"
 )
@@ -140,7 +140,7 @@ var ErrNoServerConnection = errors.New("no server connection")
 // Result contains the outcome of the TUI session.
 type Result struct {
 	// Selected contains features that were selected/confirmed.
-	Selected []apiclient.SuggestItem
+	Selected []backend.SuggestItem
 	// SyncRequested is true if user chose to sync after adding.
 	SyncRequested bool
 	// Cancelled is true if user cancelled without selecting.
@@ -172,7 +172,7 @@ type selectedItem struct {
 
 // Model is the Bubble Tea model for the TUI.
 type Model struct {
-	client           *apiclient.Client
+	backend          backend.FeatureBackend
 	textInput        textinput.Model
 	items            []featureItem           // Current list of items from API
 	cursorIndex      int                     // Current cursor position in items
@@ -204,12 +204,12 @@ type debounceMsg struct {
 
 // suggestionsMsg contains the suggestions from the API.
 type suggestionsMsg struct {
-	items []apiclient.SuggestItem
+	items []backend.SuggestItem
 	err   error
 }
 
 // New creates a new TUI model.
-func New(client *apiclient.Client, opts Options) Model {
+func New(b backend.FeatureBackend, opts Options) Model {
 	ti := textinput.New()
 	ti.Placeholder = "Search features..."
 	ti.Focus()
@@ -229,7 +229,7 @@ func New(client *apiclient.Client, opts Options) Model {
 	}
 
 	return Model{
-		client:           client,
+		backend:          b,
 		textInput:        ti,
 		items:            nil,
 		cursorIndex:      0,
@@ -440,7 +440,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "n": // Open feature creation form
 		m.state = StateCreating
-		m.formModel = NewFormModel(m.client, m.cache)
+		m.formModel = NewFormModel(m.backend, m.cache)
 		return m, m.formModel.Init()
 	}
 
@@ -794,11 +794,11 @@ func (m Model) viewSelected() string {
 	return b.String()
 }
 
-// getSelectedItems returns all selected items as API items (from SST map).
-func (m Model) getSelectedItems() []apiclient.SuggestItem {
-	items := make([]apiclient.SuggestItem, 0, len(m.selected))
+// getSelectedItems returns all selected items as backend items (from SST map).
+func (m Model) getSelectedItems() []backend.SuggestItem {
+	items := make([]backend.SuggestItem, 0, len(m.selected))
 	for _, sel := range m.selected {
-		items = append(items, apiclient.SuggestItem{
+		items = append(items, backend.SuggestItem{
 			ID:      sel.id,
 			Name:    sel.name,
 			Summary: sel.summary,
@@ -814,19 +814,19 @@ func (m Model) debounceSearch(query string, id int) tea.Cmd {
 	})
 }
 
-// fetchSuggestions fetches suggestions from the API.
+// fetchSuggestions fetches suggestions from the backend.
 func (m Model) fetchSuggestions(query string) tea.Cmd {
-	// Capture client for closure (defensive: handle nil)
-	clientRef := m.client
+	// Capture backend for closure (defensive: handle nil)
+	backendRef := m.backend
 	return func() tea.Msg {
-		if clientRef == nil {
+		if backendRef == nil {
 			return suggestionsMsg{err: ErrNoServerConnection}
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		items, err := clientRef.Suggest(ctx, query, maxSuggestions)
+		items, err := backendRef.Suggest(ctx, query, maxSuggestions)
 		return suggestionsMsg{items: items, err: err}
 	}
 }
@@ -845,8 +845,8 @@ func (m Model) GetResult() Result {
 }
 
 // Run starts the TUI and returns the result.
-func Run(client *apiclient.Client, opts Options) (Result, error) {
-	model := New(client, opts)
+func Run(b backend.FeatureBackend, opts Options) (Result, error) {
+	model := New(b, opts)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	finalModel, err := p.Run()
@@ -864,8 +864,8 @@ func Run(client *apiclient.Client, opts Options) (Result, error) {
 
 // RunLegacy provides backward-compatible single-select behavior.
 // Deprecated: Use Run with Options instead.
-func RunLegacy(client *apiclient.Client) (*apiclient.SuggestItem, error) {
-	result, err := Run(client, Options{})
+func RunLegacy(b backend.FeatureBackend) (*backend.SuggestItem, error) {
+	result, err := Run(b, Options{})
 	if err != nil {
 		return nil, err
 	}
@@ -892,14 +892,10 @@ type manifestSavedMsg struct{ err error }
 // refreshCacheCmd fetches features and returns result via message.
 func (m Model) refreshCacheCmd() tea.Cmd {
 	// Capture dependencies for closure
-	clientRef := m.client
-	serverURL := ""
-	if clientRef != nil {
-		serverURL = clientRef.BaseURL
-	}
+	backendRef := m.backend
 
 	return func() tea.Msg {
-		if clientRef == nil {
+		if backendRef == nil {
 			return cacheRefreshResultMsg{err: ErrNoServerConnection}
 		}
 
@@ -907,7 +903,7 @@ func (m Model) refreshCacheCmd() tea.Cmd {
 		defer cancel()
 
 		// Fetch features (API doesn't support pagination, so single request)
-		features, err := clientRef.Search(ctx, "", cacheRefreshLimit)
+		features, err := backendRef.Search(ctx, "", cacheRefreshLimit)
 		if err != nil {
 			return cacheRefreshResultMsg{err: err}
 		}
@@ -922,9 +918,10 @@ func (m Model) refreshCacheCmd() tea.Cmd {
 		}
 
 		// Mark incomplete if we hit limit (server may have more features)
+		// Use mode as the "server URL" for cache isolation
 		return cacheRefreshResultMsg{
 			features:  allFeatures,
-			serverURL: serverURL,
+			serverURL: backendRef.Mode(),
 			complete:  len(features) < cacheRefreshLimit,
 		}
 	}
