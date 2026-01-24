@@ -19,13 +19,37 @@ const (
 // This is distinct from apiclient.Feature and manifest.Feature.
 // Both backend implementations translate to/from this type.
 type Feature struct {
-	ID        string // FT-NNNNNN (server) or FT-LOCAL-* (unsynced)
-	Name      string
-	Summary   string
-	Owner     string
-	Tags      []string
+	ID        string    // FT-NNNNNN (server) or FT-LOCAL-* (unsynced)
+	Name      string    // Human-readable name (required, unique)
+	Summary   string    // Brief description of the feature
+	Owner     string    // Team or person responsible
+	Domain    string    // Business domain (required) - e.g., "security", "payments"
+	Component string    // Technical component (optional) - e.g., "auth-service"
+	Tags      []string  // Free-form categorization tags
 	CreatedAt time.Time // When feature was created
 	UpdatedAt time.Time // When feature was last modified (for conflict detection)
+}
+
+// FeatureStatus represents the state of a feature in the catalog.
+type FeatureStatus string
+
+const (
+	// StatusMerged indicates the feature is approved and merged to main.
+	StatusMerged FeatureStatus = "merged"
+	// StatusPending indicates the feature has an open MR awaiting review.
+	StatusPending FeatureStatus = "pending"
+	// StatusClosed indicates the MR was closed/rejected.
+	StatusClosed FeatureStatus = "closed"
+	// StatusConflict indicates the MR has merge conflicts.
+	StatusConflict FeatureStatus = "conflict"
+)
+
+// CachedFeature extends Feature with status information for local cache.
+type CachedFeature struct {
+	Feature
+	Status FeatureStatus // Current status in the workflow
+	MRIID  int           // GitLab MR internal ID (0 if merged)
+	MRURL  string        // Full URL to MR (empty if merged)
 }
 
 // SuggestItem is the backend-agnostic autocomplete item.

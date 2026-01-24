@@ -46,6 +46,7 @@ type FormModel struct {
 	name    string
 	summary string
 	owner   string
+	domain  string // Required: business domain (e.g., "security", "payments")
 	tags    string
 
 	// Validation results
@@ -66,6 +67,7 @@ const (
 	maxNameLen    = 200
 	maxSummaryLen = 1000
 	maxOwnerLen   = 100
+	maxDomainLen  = 50
 	maxTags       = 10
 )
 
@@ -91,6 +93,7 @@ func NewFormModel(b backend.FeatureBackend, c *cache.Cache) *FormModel {
 var (
 	errNameRequired    = errors.New("name is required")
 	errSummaryRequired = errors.New("summary is required")
+	errDomainRequired  = errors.New("domain is required")
 )
 
 func (m *FormModel) buildForm() *huh.Form {
@@ -138,6 +141,22 @@ func (m *FormModel) buildForm() *huh.Form {
 					s = strings.TrimSpace(s)
 					if len(s) > maxOwnerLen {
 						return fmt.Errorf("owner too long (max %d)", maxOwnerLen)
+					}
+					return nil
+				}),
+
+			huh.NewInput().
+				Key("domain").
+				Title("Domain").
+				Description("Business domain (required, e.g., security, payments)").
+				Value(&m.domain).
+				Validate(func(s string) error {
+					s = strings.TrimSpace(s)
+					if s == "" {
+						return errDomainRequired
+					}
+					if len(s) > maxDomainLen {
+						return fmt.Errorf("domain too long (max %d)", maxDomainLen)
 					}
 					return nil
 				}),
@@ -456,6 +475,7 @@ func (m *FormModel) createFeatureCmd() tea.Cmd {
 	name := strings.TrimSpace(m.name)
 	summary := strings.TrimSpace(m.summary)
 	owner := strings.TrimSpace(m.owner)
+	domain := strings.TrimSpace(m.domain)
 	tagsStr := m.tags
 
 	return func() tea.Msg {
@@ -484,6 +504,7 @@ func (m *FormModel) createFeatureCmd() tea.Cmd {
 			Name:    name,
 			Summary: summary,
 			Owner:   owner,
+			Domain:  domain,
 			Tags:    tags,
 		}
 

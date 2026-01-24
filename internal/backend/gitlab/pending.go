@@ -28,8 +28,26 @@ type PendingMR struct {
 	MRURL     string    `json:"mr_url"`              // Full URL to MR
 	Branch    string    `json:"branch"`              // Source branch name
 	Operation string    `json:"operation"`           // "create", "update", "delete"
+	Status    string    `json:"status"`              // "pending", "merged", "closed", "conflict"
 	CreatedAt time.Time `json:"created_at"`          // When MR was created
+	UpdatedAt time.Time `json:"updated_at"`          // When status was last checked
+
+	// Cached feature data for offline access
+	FeatureName    string   `json:"feature_name,omitempty"`
+	FeatureSummary string   `json:"feature_summary,omitempty"`
+	FeatureOwner   string   `json:"feature_owner,omitempty"`
+	FeatureDomain  string   `json:"feature_domain,omitempty"`
+	FeatureComp    string   `json:"feature_component,omitempty"`
+	FeatureTags    []string `json:"feature_tags,omitempty"`
 }
+
+// MR status constants.
+const (
+	MRStatusPending  = "pending"
+	MRStatusMerged   = "merged"
+	MRStatusClosed   = "closed"
+	MRStatusConflict = "conflict"
+)
 
 // PendingMRs represents the pending MRs tracking file.
 type PendingMRs struct {
@@ -228,14 +246,23 @@ func trackPendingMR(feature *backend.Feature, mrInfo *MRInfo, operation string) 
 		serverID = "" // Will be assigned when MR is merged
 	}
 
+	now := time.Now().UTC()
 	pending.Add(PendingMR{
-		LocalID:   localID,
-		ServerID:  serverID,
-		MRIID:     mrInfo.IID,
-		MRURL:     mrInfo.URL,
-		Branch:    mrInfo.Branch,
-		Operation: operation,
-		CreatedAt: time.Now().UTC(),
+		LocalID:        localID,
+		ServerID:       serverID,
+		MRIID:          mrInfo.IID,
+		MRURL:          mrInfo.URL,
+		Branch:         mrInfo.Branch,
+		Operation:      operation,
+		Status:         MRStatusPending,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		FeatureName:    feature.Name,
+		FeatureSummary: feature.Summary,
+		FeatureOwner:   feature.Owner,
+		FeatureDomain:  feature.Domain,
+		FeatureComp:    feature.Component,
+		FeatureTags:    feature.Tags,
 	})
 
 	if saveErr := pending.Save(); saveErr != nil {
@@ -243,4 +270,35 @@ func trackPendingMR(feature *backend.Feature, mrInfo *MRInfo, operation string) 
 	}
 
 	return nil
+}
+
+// ToFeature converts a PendingMR to a backend.Feature.
+func (mr *PendingMR) ToFeature() backend.Feature {
+	id := mr.ServerID
+	if id == "" {
+		id = mr.LocalID
+	}
+	return backend.Feature{
+		ID:        id,
+		Name:      mr.FeatureName,
+		Summary:   mr.FeatureSummary,
+		Owner:     mr.FeatureOwner,
+		Domain:    mr.FeatureDomain,
+		Component: mr.FeatureComp,
+		Tags:      mr.FeatureTags,
+	}
+}
+
+// ToCachedFeature converts a PendingMR to a backend.CachedFeature with status.
+func (mr *PendingMR) ToCachedFeature() backend.CachedFeature {
+	status := backend.FeatureStatus(mr.Status)
+	if status == "" {
+		status = backend.StatusPending
+	}
+	return backend.CachedFeature{
+		Feature: mr.ToFeature(),
+		Status:  status,
+		MRIID:   mr.MRIID,
+		MRURL:   mr.MRURL,
+	}
 }

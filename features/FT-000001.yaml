@@ -1,0 +1,13 @@
+id: FT-000001
+name: GitLab Catalog Integration
+summary: Store and manage feature catalog in GitLab repository with MR-based workflow
+owner: platform-team
+domain: developer-tools
+component: featctl
+tags:
+  - gitlab
+  - catalog
+  - cli
+  - merge-request
+created_at: "2026-01-23T12:00:00Z"
+updated_at: "2026-01-23T12:00:00Z"

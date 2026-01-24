@@ -33,6 +33,8 @@ type FeatureFile struct {
 	Name      string   `yaml:"name"`
 	Summary   string   `yaml:"summary"`
 	Owner     string   `yaml:"owner,omitempty"`
+	Domain    string   `yaml:"domain"`              // Required: business domain
+	Component string   `yaml:"component,omitempty"` // Optional: technical component
 	Tags      []string `yaml:"tags,omitempty"`
 	CreatedAt string   `yaml:"created_at"` // RFC3339 format
 	UpdatedAt string   `yaml:"updated_at"` // RFC3339 format
@@ -54,6 +56,8 @@ func ParseFeatureFile(content []byte) (*backend.Feature, error) {
 	if ff.Name == "" {
 		return nil, errors.New("feature file missing name")
 	}
+	// Domain is required for new features but optional for backward compatibility
+	// when parsing existing files that may not have the field yet
 
 	// Parse timestamps
 	var createdAt, updatedAt time.Time
@@ -78,6 +82,8 @@ func ParseFeatureFile(content []byte) (*backend.Feature, error) {
 		Name:      ff.Name,
 		Summary:   ff.Summary,
 		Owner:     ff.Owner,
+		Domain:    ff.Domain,
+		Component: ff.Component,
 		Tags:      ff.Tags,
 		CreatedAt: createdAt,
 		UpdatedAt: updatedAt,
@@ -87,11 +93,13 @@ func ParseFeatureFile(content []byte) (*backend.Feature, error) {
 // FormatFeatureFile converts a Feature to YAML content for storage.
 func FormatFeatureFile(f *backend.Feature) ([]byte, error) {
 	ff := FeatureFile{
-		ID:      f.ID,
-		Name:    f.Name,
-		Summary: f.Summary,
-		Owner:   f.Owner,
-		Tags:    f.Tags,
+		ID:        f.ID,
+		Name:      f.Name,
+		Summary:   f.Summary,
+		Owner:     f.Owner,
+		Domain:    f.Domain,
+		Component: f.Component,
+		Tags:      f.Tags,
 	}
 
 	// Format timestamps
