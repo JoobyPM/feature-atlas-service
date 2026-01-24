@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"gitlab.com/gitlab-org/api/client-go"
+	"golang.org/x/oauth2"
 
 	"github.com/JoobyPM/feature-atlas-service/internal/auth"
 	"github.com/JoobyPM/feature-atlas-service/internal/backend"
@@ -41,13 +42,17 @@ func New(cfg config.GitLabConfig) (*Backend, error) {
 		return nil, backend.ErrInvalidRequest
 	}
 
-	// Resolve token (env var takes precedence)
+	// Resolve token and determine its type
+	// Priority: env var (PAT) > keyring (OAuth)
 	token := cfg.Token
+	isOAuthToken := false
+
 	if token == "" {
-		// Try to get from keyring
+		// Try to get from keyring (OAuth token)
 		tokenData, err := auth.LoadToken(cfg.Instance)
 		if err == nil && tokenData.IsValid() {
 			token = tokenData.AccessToken
+			isOAuthToken = true
 		}
 	}
 
@@ -56,12 +61,21 @@ func New(cfg config.GitLabConfig) (*Backend, error) {
 		gitlab.WithBaseURL(cfg.Instance),
 	}
 
-	// Create client
+	// Create client with appropriate auth type
+	// - PATs use PRIVATE-TOKEN header (NewClient)
+	// - OAuth tokens use Authorization: Bearer header (NewAuthSourceClient)
 	var client *gitlab.Client
 	var err error
 
 	if token != "" {
-		client, err = gitlab.NewClient(token, opts...)
+		if isOAuthToken {
+			// OAuth tokens require Bearer authentication
+			ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+			client, err = gitlab.NewAuthSourceClient(gitlab.OAuthTokenSource{TokenSource: ts}, opts...)
+		} else {
+			// PATs and CI tokens use PRIVATE-TOKEN header
+			client, err = gitlab.NewClient(token, opts...)
+		}
 	} else {
 		// Try without auth (for public repos)
 		client, err = gitlab.NewClient("", opts...)
