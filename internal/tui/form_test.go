@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/JoobyPM/feature-atlas-service/internal/apiclient"
+	"github.com/JoobyPM/feature-atlas-service/internal/backend"
 	"github.com/JoobyPM/feature-atlas-service/internal/cache"
 )
 
@@ -178,7 +178,7 @@ func TestFormModel_GetCreatedFeature(t *testing.T) {
 	m := NewFormModel(nil, nil)
 	assert.Nil(t, m.GetCreatedFeature())
 
-	feature := &apiclient.Feature{
+	feature := &backend.Feature{
 		ID:      "FT-000001",
 		Name:    "Test Feature",
 		Summary: "A test feature",
@@ -307,7 +307,7 @@ func TestFormModel_View_Validating(t *testing.T) {
 func TestFormModel_View_ConfirmDuplicate(t *testing.T) {
 	m := NewFormModel(nil, nil)
 	m.state = FormStateConfirmDuplicate
-	m.duplicateFeature = &apiclient.Feature{
+	m.duplicateFeature = &backend.Feature{
 		ID:   "FT-000001",
 		Name: "Existing Feature",
 	}
@@ -346,7 +346,7 @@ func TestFormModel_View_Submitting(t *testing.T) {
 func TestFormModel_View_Success(t *testing.T) {
 	m := NewFormModel(nil, nil)
 	m.state = FormStateSuccess
-	m.createdFeature = &apiclient.Feature{
+	m.createdFeature = &backend.Feature{
 		ID:   "FT-000042",
 		Name: "New Feature",
 	}
@@ -373,7 +373,7 @@ func TestFormModel_View_Error(t *testing.T) {
 func TestFormModel_Update_ConfirmDuplicate_Yes(t *testing.T) {
 	m := NewFormModel(nil, nil)
 	m.state = FormStateConfirmDuplicate
-	m.duplicateFeature = &apiclient.Feature{ID: "FT-000001"}
+	m.duplicateFeature = &backend.Feature{ID: "FT-000001"}
 
 	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'Y'}})
 
@@ -385,7 +385,7 @@ func TestFormModel_Update_ConfirmDuplicate_Yes(t *testing.T) {
 func TestFormModel_Update_ConfirmDuplicate_No(t *testing.T) {
 	m := NewFormModel(nil, nil)
 	m.state = FormStateConfirmDuplicate
-	m.duplicateFeature = &apiclient.Feature{ID: "FT-000001"}
+	m.duplicateFeature = &backend.Feature{ID: "FT-000001"}
 
 	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'N'}})
 
@@ -397,7 +397,7 @@ func TestFormModel_Update_ConfirmDuplicate_No(t *testing.T) {
 func TestFormModel_Update_Success_AnyKey(t *testing.T) {
 	m := NewFormModel(nil, nil)
 	m.state = FormStateSuccess
-	m.createdFeature = &apiclient.Feature{ID: "FT-000001"}
+	m.createdFeature = &backend.Feature{ID: "FT-000001"}
 
 	assert.False(t, m.Done())
 
@@ -434,7 +434,7 @@ func TestFormModel_Update_Validating_DuplicateFound(t *testing.T) {
 	m.state = FormStateValidating
 
 	m.Update(duplicateCheckResultMsg{
-		duplicate: &apiclient.Feature{ID: "FT-000001"},
+		duplicate: &backend.Feature{ID: "FT-000001"},
 		err:       nil,
 	})
 
@@ -462,7 +462,7 @@ func TestFormModel_Update_Submitting_Success(t *testing.T) {
 	m.state = FormStateSubmitting
 
 	m.Update(featureCreatedMsg{
-		feature: &apiclient.Feature{ID: "FT-000001", Name: "Test"},
+		feature: &backend.Feature{ID: "FT-000001", Name: "Test"},
 		err:     nil,
 	})
 

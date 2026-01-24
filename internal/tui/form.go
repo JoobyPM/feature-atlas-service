@@ -11,7 +11,7 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/JoobyPM/feature-atlas-service/internal/apiclient"
+	"github.com/JoobyPM/feature-atlas-service/internal/backend"
 	"github.com/JoobyPM/feature-atlas-service/internal/cache"
 )
 
@@ -46,19 +46,20 @@ type FormModel struct {
 	name    string
 	summary string
 	owner   string
+	domain  string // Required: business domain (e.g., "security", "payments")
 	tags    string
 
 	// Validation results
-	duplicateFeature *apiclient.Feature
+	duplicateFeature *backend.Feature
 
 	// Result
-	createdFeature *apiclient.Feature
+	createdFeature *backend.Feature
 	err            error
 	done           bool // True when user acknowledged success/error and wants to return
 
 	// Dependencies
-	client *apiclient.Client
-	cache  *cache.Cache
+	backend backend.FeatureBackend
+	cache   *cache.Cache
 }
 
 // Form field validation limits (match server: handlers.go:183).
@@ -66,6 +67,7 @@ const (
 	maxNameLen    = 200
 	maxSummaryLen = 1000
 	maxOwnerLen   = 100
+	maxDomainLen  = 50
 	maxTags       = 10
 )
 
@@ -77,11 +79,11 @@ const (
 
 // NewFormModel creates a new form model.
 // Returns pointer to ensure huh.Form's Value() pointers remain valid.
-func NewFormModel(client *apiclient.Client, c *cache.Cache) *FormModel {
+func NewFormModel(b backend.FeatureBackend, c *cache.Cache) *FormModel {
 	m := &FormModel{
-		client: client,
-		cache:  c,
-		state:  FormStateEditing,
+		backend: b,
+		cache:   c,
+		state:   FormStateEditing,
 	}
 	m.form = m.buildForm()
 	return m
@@ -91,6 +93,7 @@ func NewFormModel(client *apiclient.Client, c *cache.Cache) *FormModel {
 var (
 	errNameRequired    = errors.New("name is required")
 	errSummaryRequired = errors.New("summary is required")
+	errDomainRequired  = errors.New("domain is required")
 )
 
 func (m *FormModel) buildForm() *huh.Form {
@@ -138,6 +141,22 @@ func (m *FormModel) buildForm() *huh.Form {
 					s = strings.TrimSpace(s)
 					if len(s) > maxOwnerLen {
 						return fmt.Errorf("owner too long (max %d)", maxOwnerLen)
+					}
+					return nil
+				}),
+
+			huh.NewInput().
+				Key("domain").
+				Title("Domain").
+				Description("Business domain (required, e.g., security, payments)").
+				Value(&m.domain).
+				Validate(func(s string) error {
+					s = strings.TrimSpace(s)
+					if s == "" {
+						return errDomainRequired
+					}
+					if len(s) > maxDomainLen {
+						return fmt.Errorf("domain too long (max %d)", maxDomainLen)
 					}
 					return nil
 				}),
@@ -332,13 +351,23 @@ func (m *FormModel) View() string {
 		b.WriteString(helpStyle.Render("[Y]es  [N]o"))
 
 	case FormStateSubmitting:
-		b.WriteString(itemDimStyle.Render("Creating feature..."))
+		if m.backend != nil && m.backend.Mode() == "gitlab" {
+			b.WriteString(itemDimStyle.Render("Creating Merge Request..."))
+		} else {
+			b.WriteString(itemDimStyle.Render("Creating feature..."))
+		}
 
 	case FormStateSuccess:
 		b.WriteString(lipgloss.NewStyle().
 			Foreground(lipgloss.Color(colorGreen)).
 			Render(fmt.Sprintf("✓ Created %s - %s", m.createdFeature.ID, m.createdFeature.Name)))
-		b.WriteString("\n\n")
+		b.WriteString("\n")
+		// Show mode-specific guidance
+		if m.backend != nil && m.backend.Mode() == "gitlab" {
+			b.WriteString(itemDimStyle.Render("  → Merge Request created - feature will appear after MR is merged"))
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
 		b.WriteString(helpStyle.Render("Press any key to continue"))
 
 	case FormStateError:
@@ -366,7 +395,7 @@ func (m *FormModel) Done() bool {
 }
 
 // GetCreatedFeature returns the created feature (if any).
-func (m *FormModel) GetCreatedFeature() *apiclient.Feature {
+func (m *FormModel) GetCreatedFeature() *backend.Feature {
 	return m.createdFeature
 }
 
@@ -378,12 +407,12 @@ func (m *FormModel) GetFormValues() (name, summary, owner, tags string) {
 
 // Messages for async operations.
 type duplicateCheckResultMsg struct {
-	duplicate *apiclient.Feature
+	duplicate *backend.Feature
 	err       error
 }
 
 type featureCreatedMsg struct {
-	feature *apiclient.Feature
+	feature *backend.Feature
 	err     error
 }
 
@@ -392,7 +421,7 @@ type featureCreatedMsg struct {
 func (m *FormModel) checkDuplicateCmd() tea.Cmd {
 	// Capture values for closure (don't capture pointer to avoid races)
 	name := strings.TrimSpace(m.name)
-	client := m.client
+	backendRef := m.backend
 	cacheRef := m.cache
 
 	return func() tea.Msg {
@@ -401,7 +430,7 @@ func (m *FormModel) checkDuplicateCmd() tea.Cmd {
 			if cached := cacheRef.FindByNameExact(name); cached != nil {
 				// Cache is authoritative - return duplicate without server call
 				return duplicateCheckResultMsg{
-					duplicate: &apiclient.Feature{
+					duplicate: &backend.Feature{
 						ID:   cached.ID,
 						Name: cached.Name,
 					},
@@ -411,13 +440,13 @@ func (m *FormModel) checkDuplicateCmd() tea.Cmd {
 			return duplicateCheckResultMsg{}
 		}
 
-		// 2. Server check (authoritative when cache is stale/incomplete)
-		if client != nil {
+		// 2. Backend check (authoritative when cache is stale/incomplete)
+		if backendRef != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 
 			// Search for features with similar name
-			results, err := client.Search(ctx, name, duplicateCheckLimit)
+			results, err := backendRef.Search(ctx, name, duplicateCheckLimit)
 			if err != nil {
 				return duplicateCheckResultMsg{err: err}
 			}
@@ -428,7 +457,7 @@ func (m *FormModel) checkDuplicateCmd() tea.Cmd {
 					return duplicateCheckResultMsg{duplicate: &results[i]}
 				}
 			}
-			return duplicateCheckResultMsg{} // Server check passed, no duplicate
+			return duplicateCheckResultMsg{} // Backend check passed, no duplicate
 		}
 
 		// 3. Offline and no usable cache - return error so user is warned
@@ -438,18 +467,19 @@ func (m *FormModel) checkDuplicateCmd() tea.Cmd {
 	}
 }
 
-// createFeatureCmd creates the feature on server.
+// createFeatureCmd creates the feature on the backend.
 // Captures values needed for the async operation.
 func (m *FormModel) createFeatureCmd() tea.Cmd {
 	// Capture values for closure
-	client := m.client
+	backendRef := m.backend
 	name := strings.TrimSpace(m.name)
 	summary := strings.TrimSpace(m.summary)
 	owner := strings.TrimSpace(m.owner)
+	domain := strings.TrimSpace(m.domain)
 	tagsStr := m.tags
 
 	return func() tea.Msg {
-		if client == nil {
+		if backendRef == nil {
 			return featureCreatedMsg{err: fmt.Errorf("%w: cannot create feature", ErrNoServerConnection)}
 		}
 
@@ -466,21 +496,23 @@ func (m *FormModel) createFeatureCmd() tea.Cmd {
 			}
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// GitLab MR creation can take time - use 60s timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
-		req := apiclient.CreateFeatureRequest{
+		feature := backend.Feature{
 			Name:    name,
 			Summary: summary,
 			Owner:   owner,
+			Domain:  domain,
 			Tags:    tags,
 		}
 
-		feature, err := client.CreateFeature(ctx, req)
+		created, err := backendRef.CreateFeature(ctx, feature)
 		if err != nil {
 			return featureCreatedMsg{err: err}
 		}
 
-		return featureCreatedMsg{feature: feature}
+		return featureCreatedMsg{feature: created}
 	}
 }
