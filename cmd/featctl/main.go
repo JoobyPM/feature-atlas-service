@@ -245,7 +245,7 @@ var meCmd = &cobra.Command{
 		return initBackend()
 	},
 	RunE: func(_ *cobra.Command, _ []string) error {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		info, err := activeBackend.GetAuthInfo(ctx)
@@ -273,7 +273,7 @@ var searchCmd = &cobra.Command{
 			query = args[0]
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		features, err := activeBackend.Search(ctx, query, searchLimit)
@@ -289,6 +289,22 @@ var searchCmd = &cobra.Command{
 		case outputYAML:
 			return yaml.NewEncoder(os.Stdout).Encode(features)
 		default:
+			if len(features) == 0 {
+				if query == "" {
+					fmt.Println("No features found in catalog.")
+					if cfg.Mode == config.ModeGitLab {
+						fmt.Println("\nTo create your first feature:")
+						fmt.Println("  featctl tui              # Interactive mode")
+						fmt.Println("  featctl feature create   # Command line")
+					} else {
+						fmt.Println("\nTo initialize a local manifest:")
+						fmt.Println("  featctl manifest init")
+					}
+				} else {
+					fmt.Printf("No features matching '%s'\n", query)
+				}
+				return nil
+			}
 			for _, f := range features {
 				fmt.Printf("%s  %s\n", f.ID, f.Name)
 				fmt.Printf("    %s\n", stringutil.Truncate(f.Summary, 70))
@@ -505,7 +521,7 @@ func syncAfterTUI(mPath string) error {
 	for _, localID := range ids {
 		entry := unsynced[localID]
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		var feature *backend.Feature
 		var createErr error
 
@@ -584,7 +600,7 @@ var getCmd = &cobra.Command{
 		return initBackend()
 	},
 	RunE: func(_ *cobra.Command, args []string) error {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		feature, err := activeBackend.GetFeature(ctx, args[0])
@@ -705,7 +721,7 @@ func checkFeatureExists(fid string) (bool, error) {
 		return false, fmt.Errorf("init client: %w", initErr)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	exists, serverErr := client.FeatureExists(ctx, fid)
@@ -876,7 +892,7 @@ Requires connection to the backend (Atlas mTLS or GitLab).`,
 		}
 
 		// Fetch from backend
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		feature, err := activeBackend.GetFeature(ctx, targetID)
@@ -993,7 +1009,7 @@ func syncAtlas() error {
 	for _, localID := range ids {
 		entry := unsynced[localID]
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		feature, createErr := activeBackend.CreateFeature(ctx, backend.Feature{
 			Name:    entry.Name,
 			Summary: entry.Summary,

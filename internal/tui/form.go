@@ -332,13 +332,23 @@ func (m *FormModel) View() string {
 		b.WriteString(helpStyle.Render("[Y]es  [N]o"))
 
 	case FormStateSubmitting:
-		b.WriteString(itemDimStyle.Render("Creating feature..."))
+		if m.backend != nil && m.backend.Mode() == "gitlab" {
+			b.WriteString(itemDimStyle.Render("Creating Merge Request..."))
+		} else {
+			b.WriteString(itemDimStyle.Render("Creating feature..."))
+		}
 
 	case FormStateSuccess:
 		b.WriteString(lipgloss.NewStyle().
 			Foreground(lipgloss.Color(colorGreen)).
 			Render(fmt.Sprintf("✓ Created %s - %s", m.createdFeature.ID, m.createdFeature.Name)))
-		b.WriteString("\n\n")
+		b.WriteString("\n")
+		// Show mode-specific guidance
+		if m.backend != nil && m.backend.Mode() == "gitlab" {
+			b.WriteString(itemDimStyle.Render("  → Merge Request created - feature will appear after MR is merged"))
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
 		b.WriteString(helpStyle.Render("Press any key to continue"))
 
 	case FormStateError:
@@ -466,7 +476,8 @@ func (m *FormModel) createFeatureCmd() tea.Cmd {
 			}
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// GitLab MR creation can take time - use 60s timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
 		feature := backend.Feature{
